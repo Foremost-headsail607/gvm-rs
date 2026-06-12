@@ -22,8 +22,9 @@ pub fn set_version_link(link: &Path, target: &Path) -> Result<()> {
 fn remove_link_if_exists(link: &Path) -> Result<()> {
     match std::fs::symlink_metadata(link) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(anyhow::Error::from(e))
-            .with_context(|| format!("Cannot stat {}", link.display())),
+        Err(e) => {
+            Err(anyhow::Error::from(e)).with_context(|| format!("Cannot stat {}", link.display()))
+        }
         Ok(_) => std::fs::remove_dir(link)
             .with_context(|| format!("Failed to remove {}", link.display())),
     }
@@ -33,8 +34,9 @@ fn remove_link_if_exists(link: &Path) -> Result<()> {
 fn remove_link_if_exists(link: &Path) -> Result<()> {
     match std::fs::symlink_metadata(link) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(anyhow::Error::from(e))
-            .with_context(|| format!("Cannot stat {}", link.display())),
+        Err(e) => {
+            Err(anyhow::Error::from(e)).with_context(|| format!("Cannot stat {}", link.display()))
+        }
         Ok(_) => std::fs::remove_file(link)
             .with_context(|| format!("Failed to remove {}", link.display())),
     }
