@@ -11,7 +11,7 @@
 use anyhow::{bail, Context, Result};
 use std::path::PathBuf;
 
-use crate::{config::Config, user_version::VersionSpec, version::GoVersion};
+use crate::{config::Config, fs as gvm_fs, user_version::VersionSpec, version::GoVersion};
 
 /// Indicates where the active version was determined from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -144,6 +144,24 @@ pub fn version_bin_path(config: &Config, version: &GoVersion) -> Result<PathBuf>
 pub fn set_global_version(config: &Config, version: &GoVersion) -> Result<()> {
     std::fs::write(config.version_file(), version.tag())
         .context("Failed to write global version file")
+}
+
+/// Updates the `~/.gvm/current` junction/symlink to point to `version`.
+///
+/// This is what makes `go` visible to all shells (CMD, Git Bash, PowerShell)
+/// and editors (VSCode, GoLand) without any per-shell hook. The PATH entry
+/// `~/.gvm/current/bin` is added to the Windows registry once during install;
+/// afterwards only the junction target needs to change on every `gvm use`.
+///
+/// # Errors
+///
+/// Returns an error if the junction/symlink cannot be created (e.g. the
+/// version directory does not exist, or file-system permissions prevent it).
+pub fn update_current_link(config: &Config, version: &GoVersion) -> Result<()> {
+    let link = config.current_dir();
+    let target = config.version_dir(&version.tag());
+    gvm_fs::set_version_link(&link, &target)
+        .with_context(|| format!("Failed to update current link to {}", version.tag()))
 }
 
 // --- Resolution --------------------------------------------------------------
