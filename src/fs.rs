@@ -4,7 +4,7 @@
 //! toolchain management. The primary concern is safe directory moves across
 //! different drives or mount points, which `std::fs::rename` does not support.
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result};
 use std::path::Path;
 
 /// Creates or replaces the `~/.gvm/current` junction/symlink so it points to
@@ -55,12 +55,12 @@ fn create_link(link: &Path, target: &Path) -> Result<()> {
         .context("Failed to run cmd for mklink")?;
     if !out.status.success() {
         let msg = String::from_utf8_lossy(&out.stderr);
-        bail!(
+        return Err(anyhow::anyhow!(
             "Failed to create junction {} -> {}: {}",
             link.display(),
             target.display(),
             msg.trim()
-        );
+        ));
     }
     Ok(())
 }
