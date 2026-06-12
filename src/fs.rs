@@ -4,8 +4,75 @@
 //! toolchain management. The primary concern is safe directory moves across
 //! different drives or mount points, which `std::fs::rename` does not support.
 
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use std::path::Path;
+
+/// Creates or replaces the `~/.gvm/current` junction/symlink so it points to
+/// `target`.
+///
+/// On Windows an NTFS junction (reparse point) is used: no elevation and no
+/// Developer Mode is required. On Unix a directory symbolic link is used.
+/// Any existing link or empty directory at `link` is atomically replaced.
+pub fn set_version_link(link: &Path, target: &Path) -> Result<()> {
+    remove_link_if_exists(link)?;
+    create_link(link, target)
+}
+
+#[cfg(windows)]
+fn remove_link_if_exists(link: &Path) -> Result<()> {
+    match std::fs::symlink_metadata(link) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(anyhow::Error::from(e))
+            .with_context(|| format!("Cannot stat {}", link.display())),
+        Ok(_) => std::fs::remove_dir(link)
+            .with_context(|| format!("Failed to remove {}", link.display())),
+    }
+}
+
+#[cfg(not(windows))]
+fn remove_link_if_exists(link: &Path) -> Result<()> {
+    match std::fs::symlink_metadata(link) {
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) => Err(anyhow::Error::from(e))
+            .with_context(|| format!("Cannot stat {}", link.display())),
+        Ok(_) => std::fs::remove_file(link)
+            .with_context(|| format!("Failed to remove {}", link.display())),
+    }
+}
+
+#[cfg(windows)]
+fn create_link(link: &Path, target: &Path) -> Result<()> {
+    // mklink /J creates an NTFS junction - no elevation or Developer Mode needed.
+    let out = std::process::Command::new("cmd")
+        .arg("/c")
+        .arg("mklink")
+        .arg("/J")
+        .arg(link)
+        .arg(target)
+        .output()
+        .context("Failed to run cmd for mklink")?;
+    if !out.status.success() {
+        let msg = String::from_utf8_lossy(&out.stderr);
+        bail!(
+            "Failed to create junction {} -> {}: {}",
+            link.display(),
+            target.display(),
+            msg.trim()
+        );
+    }
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn create_link(link: &Path, target: &Path) -> Result<()> {
+    std::os::unix::fs::symlink(target, link).with_context(|| {
+        format!(
+            "Failed to create symlink {} -> {}",
+            link.display(),
+            target.display()
+        )
+    })
+}
 
 /// Moves the directory at `src` to `dst`.
 ///
