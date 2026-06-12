@@ -1,0 +1,283 @@
+name: Release
+
+# Triggered when ci.yml's auto-release job pushes a new version tag.
+# Builds binaries for all supported platforms, packages them, generates
+# checksums + SBOM, and uploads everything to the GitHub Release that
+# ci.yml already created with the structured changelog.
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ── Cross-compile for every supported target ──────────────────────────────────
+  #
+  # Naming convention (must stay in sync with upgrade.rs::release_binary_name()):
+  #   Raw binary : gvm-{os}-{arch}[.exe]   ← what `gvm upgrade` downloads
+  #   Archive    : gvm_{os}_{arch}.tar.gz  ← for manual installation
+  #   Archive    : gvm_{os}_{arch}.zip     ← Windows manual installation
+  build:
+    name: Build ${{ matrix.artifact_binary }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # ── Linux x86_64 - 100% static musl binary ────────────────────────────
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            binary_name: gvm
+            artifact_binary: gvm-linux-x86_64
+            artifact_archive: gvm_linux_x86_64.tar.gz
+            archive_type: tar
+            use_cross: false
+
+          # ── Linux aarch64 - static musl (cross + Docker) ─────────────────────
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            binary_name: gvm
+            artifact_binary: gvm-linux-aarch64
+            artifact_archive: gvm_linux_aarch64.tar.gz
+            archive_type: tar
+            use_cross: true
+
+          # ── macOS x86_64 (Intel) ──────────────────────────────────────────────
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            binary_name: gvm
+            artifact_binary: gvm-darwin-x86_64
+            artifact_archive: gvm_darwin_x86_64.tar.gz
+            archive_type: tar
+            use_cross: false
+
+          # ── macOS aarch64 (Apple Silicon) ─────────────────────────────────────
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            binary_name: gvm
+            artifact_binary: gvm-darwin-aarch64
+            artifact_archive: gvm_darwin_aarch64.tar.gz
+            archive_type: tar
+            use_cross: false
+
+          # ── Windows x86_64 (MSVC) ─────────────────────────────────────────────
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            binary_name: gvm.exe
+            artifact_binary: gvm-windows-x86_64.exe
+            artifact_archive: gvm_windows_x86_64.zip
+            archive_type: zip
+            use_cross: false
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache Cargo registry and build artifacts
+        uses: Swatinem/rust-cache@82a92a6e8fbeee089604da2575dc567ae9ddeaab # v2
+        with:
+          key: release-${{ matrix.target }}
+
+      # ── Linux-only toolchain setup ────────────────────────────────────────────
+
+      - name: Install musl-tools (Linux x86_64 static)
+        if: matrix.target == 'x86_64-unknown-linux-musl'
+        run: sudo apt-get update -q && sudo apt-get install -y musl-tools
+
+      - name: Install cross (Linux aarch64 via Docker)
+        if: matrix.use_cross
+        run: cargo install cross --locked
+
+      # ── Compile ───────────────────────────────────────────────────────────────
+
+      - name: Build binary (cross - Docker QEMU)
+        if: matrix.use_cross
+        run: cross build --release --locked --target ${{ matrix.target }}
+
+      - name: Build binary (cargo - native)
+        if: "!matrix.use_cross"
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      # ── Package raw binary ────────────────────────────────────────────────────
+      #
+      # This is what `gvm upgrade` downloads directly. The name must exactly
+      # match what upgrade.rs::release_binary_name() constructs at runtime.
+
+      - name: Copy raw binary (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" \
+             "${{ matrix.artifact_binary }}"
+
+      - name: Copy raw binary (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Copy-Item "target\${{ matrix.target }}\release\${{ matrix.binary_name }}" `
+                    "${{ matrix.artifact_binary }}"
+
+      # ── Package compressed archive ────────────────────────────────────────────
+      #
+      # For manual installation. The entry inside each archive is named "gvm"
+      # (or "gvm.exe") regardless of the archive name, so extraction is uniform.
+
+      - name: Package archive (tar.gz - Linux / macOS)
+        if: matrix.archive_type == 'tar'
+        shell: bash
+        run: |
+          # Rename to a plain "gvm" so the tar entry is predictable
+          cp "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" gvm
+          tar czf "${{ matrix.artifact_archive }}" gvm
+          rm gvm
+
+      - name: Package archive (zip - Windows)
+        if: matrix.archive_type == 'zip'
+        shell: pwsh
+        run: |
+          # Copy as gvm.exe so the zip entry is always "gvm.exe"
+          Copy-Item "target\${{ matrix.target }}\release\${{ matrix.binary_name }}" gvm.exe
+          Compress-Archive -Path gvm.exe `
+                           -DestinationPath "${{ matrix.artifact_archive }}" `
+                           -Force
+          Remove-Item gvm.exe
+
+      # ── Upload to workflow artifacts (collected by publish job) ───────────────
+
+      - name: Upload raw binary
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: ${{ matrix.artifact_binary }}
+          path: ${{ matrix.artifact_binary }}
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload archive
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: ${{ matrix.artifact_archive }}
+          path: ${{ matrix.artifact_archive }}
+          if-no-files-found: error
+          retention-days: 1
+
+  # ── Checksums · SBOM · Upload to GitHub Release ───────────────────────────────
+  #
+  # The GitHub Release was already created by ci.yml (with the full changelog).
+  # This job collects all artifacts, augments them with checksums and an SBOM,
+  # then uploads the complete set to that existing release.
+  publish:
+    name: Publish Release Assets
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write # for future cosign keyless signing
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
+        with:
+          fetch-depth: 0
+
+      # Each artifact is stored in its own sub-directory; flatten them all into dist/
+      - name: Download all build artifacts
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: dist/
+
+      - name: Flatten artifact directories into dist/
+        run: |
+          find dist/ -mindepth 2 -type f -exec mv {} dist/ \;
+          find dist/ -mindepth 1 -type d -empty -delete
+          echo "=== dist/ contents ==="
+          ls -lh dist/
+
+      # ── checksums.txt ──────────────────────────────────────────────────────────
+      #
+      # Covers all raw binaries and archives. Users can verify with:
+      #   sha256sum -c checksums.txt
+      - name: Generate checksums.txt
+        working-directory: dist
+        run: |
+          sha256sum gvm-* gvm_* > checksums.txt
+          echo ""
+          echo "=== checksums.txt ==="
+          cat checksums.txt
+
+      # ── SBOM (Software Bill of Materials) ─────────────────────────────────────
+      #
+      # Syft reads Cargo.lock and produces both CycloneDX and SPDX JSON formats
+      # for supply-chain transparency. Consumers can run Grype on either format:
+      #   grype sbom:dist/sbom.cyclonedx.json
+      - name: Install syft
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | \
+            sh -s -- -b /usr/local/bin
+          syft --version
+
+      - name: Generate SBOM - CycloneDX JSON
+        run: syft scan dir:. -o cyclonedx-json --file dist/sbom.cyclonedx.json
+
+      - name: Generate SBOM - SPDX JSON
+        run: syft scan dir:. -o spdx-json --file dist/sbom.spdx.json
+
+      # ── Upload to the release ci.yml already created ──────────────────────────
+
+      - name: Upload all release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ github.ref_name }}"
+          echo "Uploading assets for ${TAG} ..."
+          echo ""
+          for file in dist/*; do
+            echo "  → $(basename "$file")"
+            gh release upload "$TAG" "$file" \
+              --repo "${{ github.repository }}" \
+              --clobber
+          done
+          echo ""
+          echo "✅ All assets uploaded to ${TAG}"
+
+      # ── Workflow job summary ───────────────────────────────────────────────────
+      - name: Job summary
+        run: |
+          TAG="${{ github.ref_name }}"
+          {
+            echo "## 📦 Release Assets - ${TAG}"
+            echo ""
+            echo "| File | Size | Purpose |"
+            echo "|------|------|---------|"
+            for f in dist/gvm-*; do
+              [ -f "$f" ] || continue
+              printf "| \`%s\` | %s | raw binary (\`gvm upgrade\`) |\n" \
+                "$(basename "$f")" "$(du -h "$f" | cut -f1)"
+            done
+            for f in dist/gvm_*; do
+              [ -f "$f" ] || continue
+              printf "| \`%s\` | %s | install archive |\n" \
+                "$(basename "$f")" "$(du -h "$f" | cut -f1)"
+            done
+            echo "| \`checksums.txt\` | - | SHA-256 integrity verification |"
+            echo "| \`sbom.cyclonedx.json\` | - | SBOM (CycloneDX - Grype compatible) |"
+            echo "| \`sbom.spdx.json\` | - | SBOM (SPDX ISO/IEC 5962:2021) |"
+            echo ""
+            echo "### Checksums"
+            echo "\`\`\`"
+            cat dist/checksums.txt
+            echo "\`\`\`"
+            echo ""
+            echo "### Verify a download"
+            echo "\`\`\`sh"
+            echo "sha256sum -c checksums.txt"
+            echo "\`\`\`"
+          } >> "$GITHUB_STEP_SUMMARY"
