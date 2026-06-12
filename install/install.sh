@@ -91,15 +91,15 @@ mkdir -p "$INSTALL_DIR"
 mv -f "$TMP_FILE" "$INSTALL_DIR/gvm"
 ok "Installed to $INSTALL_DIR/gvm"
 
-# -- 6. Summary ----------------------------------------------------------------
-printf "\n  ${C_GREEN}${C_BOLD}gvm $GVM_VERSION installed successfully!${C_RESET}\n\n"
+# -- 6. Run gvm setup ----------------------------------------------------------
+# Run setup via full path so it works even before INSTALL_DIR is on PATH.
+printf "\n  ${C_BOLD}Configuring shell environment...${C_RESET}\n\n"
+"$INSTALL_DIR/gvm" setup
+
+# -- 7. Summary ----------------------------------------------------------------
+printf "\n  ${C_GREEN}${C_BOLD}gvm $GVM_VERSION installed and configured!${C_RESET}\n\n"
 printf "  Next steps:\n\n"
-printf "  1. Ensure ${C_CYAN}$INSTALL_DIR${C_RESET} is in your PATH.\n"
-printf "     On most systems it already is. To add it manually:\n"
-printf "       ${C_CYAN}export PATH=\"$INSTALL_DIR:\$PATH\"${C_RESET}\n\n"
-printf "  2. Configure your shell:\n"
-printf "       ${C_CYAN}gvm setup${C_RESET}\n\n"
-printf "  3. Restart your shell, then install and activate Go:\n"
+printf "  1. Restart your shell (or source your profile), then install Go:\n"
 printf "       ${C_CYAN}gvm install latest${C_RESET}\n"
 printf "       ${C_CYAN}gvm use latest${C_RESET}\n\n"
 printf "  Run ${C_CYAN}gvm doctor${C_RESET} to verify the setup.\n\n"
