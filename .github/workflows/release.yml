@@ -1,9 +1,8 @@
 name: Release
 
-# Triggered when ci.yml's auto-release job pushes a new version tag.
-# Builds binaries for all supported platforms, packages them, generates
-# checksums + SBOM, and uploads everything to the GitHub Release that
-# ci.yml already created with the structured changelog.
+# Triggered by pushing a version tag (e.g. git tag v1.1.0 && git push origin v1.1.0).
+# Builds binaries for all supported platforms, generates checksums + SBOM,
+# creates the GitHub Release with structured notes and uploads everything.
 on:
   push:
     tags:
@@ -14,14 +13,15 @@ permissions:
 
 env:
   CARGO_TERM_COLOR: always
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   # ── Cross-compile for every supported target ──────────────────────────────────
   #
   # Naming convention (must stay in sync with upgrade.rs::release_binary_name()):
-  #   Raw binary : gvm-{os}-{arch}[.exe]   ← what `gvm upgrade` downloads
-  #   Archive    : gvm_{os}_{arch}.tar.gz  ← for manual installation
-  #   Archive    : gvm_{os}_{arch}.zip     ← Windows manual installation
+  #   Raw binary : gvm-{os}-{arch}[.exe]   - what `gvm upgrade` downloads
+  #   Archive    : gvm_{os}_{arch}.tar.gz  - for manual installation
+  #   Archive    : gvm_{os}_{arch}.zip     - Windows manual installation
   build:
     name: Build ${{ matrix.artifact_binary }}
     runs-on: ${{ matrix.os }}
@@ -128,15 +128,11 @@ jobs:
                     "${{ matrix.artifact_binary }}"
 
       # ── Package compressed archive ────────────────────────────────────────────
-      #
-      # For manual installation. The entry inside each archive is named "gvm"
-      # (or "gvm.exe") regardless of the archive name, so extraction is uniform.
 
       - name: Package archive (tar.gz - Linux / macOS)
         if: matrix.archive_type == 'tar'
         shell: bash
         run: |
-          # Rename to a plain "gvm" so the tar entry is predictable
           cp "target/${{ matrix.target }}/release/${{ matrix.binary_name }}" gvm
           tar czf "${{ matrix.artifact_archive }}" gvm
           rm gvm
@@ -145,7 +141,6 @@ jobs:
         if: matrix.archive_type == 'zip'
         shell: pwsh
         run: |
-          # Copy as gvm.exe so the zip entry is always "gvm.exe"
           Copy-Item "target\${{ matrix.target }}\release\${{ matrix.binary_name }}" gvm.exe
           Compress-Archive -Path gvm.exe `
                            -DestinationPath "${{ matrix.artifact_archive }}" `
@@ -170,25 +165,20 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
-  # ── Checksums · SBOM · Upload to GitHub Release ───────────────────────────────
-  #
-  # The GitHub Release was already created by ci.yml (with the full changelog).
-  # This job collects all artifacts, augments them with checksums and an SBOM,
-  # then uploads the complete set to that existing release.
+  # ── Checksums · SBOM · Create Release · Upload Assets ────────────────────────
   publish:
     name: Publish Release Assets
     needs: build
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      id-token: write # for future cosign keyless signing
+      id-token: write
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v4
         with:
           fetch-depth: 0
 
-      # Each artifact is stored in its own sub-directory; flatten them all into dist/
       - name: Download all build artifacts
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -202,9 +192,7 @@ jobs:
           ls -lh dist/
 
       # ── checksums.txt ──────────────────────────────────────────────────────────
-      #
-      # Covers all raw binaries and archives. Users can verify with:
-      #   sha256sum -c checksums.txt
+
       - name: Generate checksums.txt
         working-directory: dist
         run: |
@@ -213,11 +201,8 @@ jobs:
           echo "=== checksums.txt ==="
           cat checksums.txt
 
-      # ── SBOM (Software Bill of Materials) ─────────────────────────────────────
-      #
-      # Syft reads Cargo.lock and produces both CycloneDX and SPDX JSON formats
-      # for supply-chain transparency. Consumers can run Grype on either format:
-      #   grype sbom:dist/sbom.cyclonedx.json
+      # ── SBOM ──────────────────────────────────────────────────────────────────
+
       - name: Install syft
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | \
@@ -230,30 +215,118 @@ jobs:
       - name: Generate SBOM - SPDX JSON
         run: syft scan dir:. -o spdx-json --file dist/sbom.spdx.json
 
-      # ── Upload to the release ci.yml already created ──────────────────────────
+      # ── Generate release notes from conventional commits ──────────────────────
 
-      - name: Upload all release assets
+      - name: Generate release notes
+        id: notes
+        run: |
+          set -euo pipefail
+
+          TAG="${{ github.ref_name }}"
+          REPO="${{ github.repository }}"
+
+          PREV_TAG=$(git tag -l 'v[0-9]*.[0-9]*.[0-9]*' | sort -V | grep -v "^${TAG}$" | tail -1 || true)
+          [ -z "$PREV_TAG" ] && RANGE="HEAD" || RANGE="${PREV_TAG}..HEAD"
+
+          {
+            echo "## What's Changed in ${TAG}"
+            echo ""
+
+            BREAKING=$(git log "$RANGE" --format="%s" | grep -E '^[a-z]+(\([^)]*\))?!:' | sed 's/^[^:]*: //' || true)
+            if [ -n "$BREAKING" ]; then
+              echo "### Breaking Changes"
+              while IFS= read -r l; do [ -n "$l" ] && echo "- $l"; done <<< "$BREAKING"
+              echo ""
+            fi
+
+            FEATS=$(git log "$RANGE" --format="%s" | grep -E '^feat(\([^)]*\))?:' | sed 's/^feat[^:]*: //' || true)
+            if [ -n "$FEATS" ]; then
+              echo "### New Features"
+              while IFS= read -r l; do [ -n "$l" ] && echo "- $l"; done <<< "$FEATS"
+              echo ""
+            fi
+
+            FIXES=$(git log "$RANGE" --format="%s" | grep -E '^fix(\([^)]*\))?:' | sed 's/^fix[^:]*: //' || true)
+            if [ -n "$FIXES" ]; then
+              echo "### Bug Fixes"
+              while IFS= read -r l; do [ -n "$l" ] && echo "- $l"; done <<< "$FIXES"
+              echo ""
+            fi
+
+            SECURITY=$(git log "$RANGE" --format="%s" | grep -E '^security(\([^)]*\))?:' | sed 's/^security[^:]*: //' || true)
+            if [ -n "$SECURITY" ]; then
+              echo "### Security"
+              while IFS= read -r l; do [ -n "$l" ] && echo "- $l"; done <<< "$SECURITY"
+              echo ""
+            fi
+
+            PERF=$(git log "$RANGE" --format="%s" | grep -E '^perf(\([^)]*\))?:' | sed 's/^perf[^:]*: //' || true)
+            if [ -n "$PERF" ]; then
+              echo "### Performance"
+              while IFS= read -r l; do [ -n "$l" ] && echo "- $l"; done <<< "$PERF"
+              echo ""
+            fi
+
+            if [ -n "$PREV_TAG" ]; then
+              echo "---"
+              echo "**Full changelog**: https://github.com/${REPO}/compare/${PREV_TAG}...${TAG}"
+              echo ""
+            fi
+
+            echo "### Install or upgrade"
+            echo ""
+            echo "\`\`\`powershell"
+            echo "# Windows"
+            echo "irm https://raw.githubusercontent.com/${REPO}/main/install/install.ps1 | iex"
+            echo ""
+            echo "# Or upgrade in-place"
+            echo "gvm upgrade"
+            echo "\`\`\`"
+            echo ""
+            echo "\`\`\`sh"
+            echo "# Linux / macOS"
+            echo "curl -fsSL https://raw.githubusercontent.com/${REPO}/main/install/install.sh | sh"
+            echo ""
+            echo "# Or upgrade in-place"
+            echo "gvm upgrade"
+            echo "\`\`\`"
+          } > /tmp/release_notes.md
+
+          cat /tmp/release_notes.md
+          echo "notes_file=/tmp/release_notes.md" >> "$GITHUB_OUTPUT"
+
+      # ── Create GitHub Release and upload all assets ───────────────────────────
+
+      - name: Create GitHub Release and upload assets
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           TAG="${{ github.ref_name }}"
+
+          gh release create "$TAG" \
+            --repo "${{ github.repository }}" \
+            --title "gvm ${TAG}" \
+            --notes-file /tmp/release_notes.md \
+            --latest \
+            --verify-tag
+
           echo "Uploading assets for ${TAG} ..."
-          echo ""
           for file in dist/*; do
-            echo "  → $(basename "$file")"
+            echo "  - $(basename "$file")"
             gh release upload "$TAG" "$file" \
               --repo "${{ github.repository }}" \
               --clobber
           done
-          echo ""
-          echo "✅ All assets uploaded to ${TAG}"
+
+          echo "Release ${TAG} published with all assets"
 
       # ── Workflow job summary ───────────────────────────────────────────────────
+
       - name: Job summary
         run: |
           TAG="${{ github.ref_name }}"
           {
-            echo "## 📦 Release Assets - ${TAG}"
+            echo "## Release Assets - ${TAG}"
             echo ""
             echo "| File | Size | Purpose |"
             echo "|------|------|---------|"
@@ -268,16 +341,11 @@ jobs:
                 "$(basename "$f")" "$(du -h "$f" | cut -f1)"
             done
             echo "| \`checksums.txt\` | - | SHA-256 integrity verification |"
-            echo "| \`sbom.cyclonedx.json\` | - | SBOM (CycloneDX - Grype compatible) |"
+            echo "| \`sbom.cyclonedx.json\` | - | SBOM (CycloneDX) |"
             echo "| \`sbom.spdx.json\` | - | SBOM (SPDX ISO/IEC 5962:2021) |"
             echo ""
             echo "### Checksums"
             echo "\`\`\`"
             cat dist/checksums.txt
-            echo "\`\`\`"
-            echo ""
-            echo "### Verify a download"
-            echo "\`\`\`sh"
-            echo "sha256sum -c checksums.txt"
             echo "\`\`\`"
           } >> "$GITHUB_STEP_SUMMARY"
