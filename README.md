@@ -8,7 +8,7 @@ Install, switch, and pin any Go release - no `sudo`, no system dependencies, no 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue?style=flat-square)](LICENSE)
 [![Rust](https://img.shields.io/badge/built_with-Rust-orange?style=flat-square&logo=rust)](https://www.rust-lang.org/)
 [![Platform](https://img.shields.io/badge/platform-Windows_%7C_Linux_%7C_macOS-brightgreen?style=flat-square&logo=github)](https://github.com/jhonsferg/gvm/releases)
-[![Version](https://img.shields.io/badge/version-1.0.0-blueviolet?style=flat-square)](https://github.com/jhonsferg/gvm/releases/tag/v1.0.0)
+[![Version](https://img.shields.io/badge/version-1.2.0-blueviolet?style=flat-square)](https://github.com/jhonsferg/gvm/releases/tag/v1.2.0)
 [![TLS](<https://img.shields.io/badge/TLS-rustls_(no_OpenSSL)-lightgrey?style=flat-square&logo=letsencrypt>)](https://github.com/rustls/rustls)
 
 </div>
@@ -25,6 +25,7 @@ gvm is a Go version manager built from scratch in Rust. It was designed with a s
 - **Truly cross-platform** - one codebase, one behavior across Windows, Linux, and macOS on both x86_64 and ARM64.
 - **SHA-256 verified downloads** - every archive is checked against go.dev's official checksum before extraction.
 - **Session-scoped activation** - `gvm shell <version>` activates a version for the current terminal only, without touching any files.
+- **Full environment setup** - `gvm setup` configures everything: shell hook, login profile PATH (so GUI apps like VSCode find Go), and Windows registry. Works correctly after a fresh install or a shell change.
 - **Self-updating** - `gvm upgrade` downloads and replaces the binary in-place.
 - **Clean uninstall** - `gvm implode` removes everything gvm ever touched.
 
@@ -54,7 +55,7 @@ gvm is a Go version manager built from scratch in Rust. It was designed with a s
 irm https://raw.githubusercontent.com/jhonsferg/gvm/main/install/install.ps1 | iex
 ```
 
-> Installs `gvm.exe` to `~\.local\bin`, adds it to your user `PATH` via the registry, and injects the shell hook into your PowerShell profile.
+> Installs `gvm.exe` to `~\.local\bin`, then automatically runs `gvm setup` which adds the binary directory and `~\.gvm\current\bin` to your user `PATH` via the Windows registry, and injects the shell hook into your PowerShell profile.
 
 ### 🐧 Linux and 🍎 macOS
 
@@ -62,7 +63,7 @@ irm https://raw.githubusercontent.com/jhonsferg/gvm/main/install/install.ps1 | i
 curl -fsSL https://raw.githubusercontent.com/jhonsferg/gvm/main/install/install.sh | sh
 ```
 
-> Installs `gvm` to `~/.local/bin`, updates your shell profile (`~/.bashrc`, `~/.zshrc`, or `~/.config/fish/config.fish`), and injects the `gvm env` hook.
+> Installs `gvm` to `~/.local/bin`, then automatically runs `gvm setup` which injects the `gvm env` hook into your shell profile (`~/.bashrc`, `~/.zshrc`, etc.) and adds a static `~/.gvm/current/bin` PATH entry to your login profile (`~/.profile` or `~/.zprofile`) so that GUI applications like VSCode and GoLand can find Go without needing an interactive shell.
 
 ### 📂 Custom install directory
 
@@ -230,16 +231,29 @@ gvm env --shell powershell | Out-String | Invoke-Expression
 
 ---
 
-### 🔧 `gvm setup [--shell <name>]`
+### 🔧 `gvm setup [--shell <name>] [--reset]`
 
-Injects the `gvm env` hook into your shell profile. The install scripts run this automatically; you only need it manually if you move the binary or change your shell.
+Performs **all environment configuration** for gvm. The install scripts run this automatically; you only need it manually after moving the binary, changing your shell, or troubleshooting.
 
 ```sh
-gvm setup               # 🔍 auto-detect shell
-gvm setup --shell zsh   # 🎯 explicit target
+gvm setup                    # auto-detect shell
+gvm setup --shell zsh        # configure a specific shell explicitly
+gvm setup --reset            # strip all previous gvm config and re-apply cleanly
+gvm setup --shell bash --reset
 ```
 
-> 🛡️ The `# gvm init` marker prevents duplicate entries - re-running `setup` is always safe.
+What `gvm setup` configures:
+
+| Platform | What it does |
+| -------- | ------------ |
+| **Linux / macOS** | Injects `# gvm init` + `# gvm wrapper` into the interactive profile (`~/.bashrc`, `~/.zshrc`, etc.). Also injects a static `export PATH` line into the login profile (`~/.profile` for bash, `~/.zprofile` for zsh) so `~/.gvm/current/bin` is visible to GUI apps (VSCode, GoLand, display managers) that don't source the interactive profile. |
+| **Windows** | Injects `# gvm init` + `# gvm wrapper` into the PowerShell profile. Adds the gvm binary directory and `~\.gvm\current\bin` to the user `PATH` in the Windows registry (`HKCU\Environment`) so all apps - including GUI editors - see Go without requiring a shell session. |
+
+**Shell validation:** if `--shell <name>` is passed, gvm checks that the shell is actually installed before writing anything. If not found, it exits with an error listing which shells are available on the system.
+
+**`--reset` flag:** strips every `# gvm ...` block from all managed profiles (and the Windows registry) and re-applies configuration from scratch. Only gvm-managed content is touched - all other profile content is preserved.
+
+> Re-running `gvm setup` without `--reset` is always safe - existing up-to-date blocks are left unchanged and stale ones are updated automatically.
 
 ---
 
@@ -310,7 +324,9 @@ What gets removed:
 
 - 📁 The entire `~/.gvm/` data directory (all installed Go versions)
 - 🔧 The `gvm` binary itself
-- 🐚 Every gvm-managed line from your shell profile
+- 🐚 Every gvm-managed line from your interactive shell profile (`~/.bashrc`, `~/.zshrc`, PowerShell profile, etc.)
+- 🔑 The static PATH entry from your login profile (`~/.profile`, `~/.zprofile`) on Linux/macOS
+- 🗝️ The gvm entries from the Windows user PATH registry key (`HKCU\Environment`) on Windows
 
 > ⚠️ This operation is **irreversible**. Your installed Go versions will be deleted. Use `gvm upgrade` instead if you just want to update.
 
@@ -365,20 +381,32 @@ gvm walks up the directory tree from the current working directory (up to 20 lev
 
 ## 🐚 Shell Integration
 
-After installation, your shell profile contains a hook line:
+After running `gvm setup`, two things are configured in your shell:
 
-| Shell         | Hook                                                            |
-| ------------- | --------------------------------------------------------------- |
-| 🐧 Bash       | `eval "$(gvm env --shell bash)"`                                |
-| 🐚 Zsh        | `eval "$(gvm env --shell zsh)"`                                 |
-| 🐟 Fish       | `gvm env --shell fish \| source`                                |
-| 🪟 PowerShell | `gvm env --shell powershell \| Out-String \| Invoke-Expression` |
+**1. Interactive profile** - the `gvm env` hook, injected once by `gvm setup`:
 
-On every new shell session the hook:
+| Shell         | Profile file                              | Hook                                                            |
+| ------------- | ----------------------------------------- | --------------------------------------------------------------- |
+| 🐧 Bash       | `~/.bashrc`                               | `eval "$(gvm env --shell bash)"`                                |
+| 🐚 Zsh        | `~/.zshrc`                                | `eval "$(gvm env --shell zsh)"`                                 |
+| 🐟 Fish       | `~/.config/fish/config.fish`              | `gvm env --shell fish \| source`                                |
+| 🪟 PowerShell | `~/Documents/PowerShell/profile.ps1`      | `gvm env --shell powershell \| Out-String \| Invoke-Expression` |
+
+On every new interactive shell session the hook:
 
 1. 🔍 Reads the active version (`.go-version` → global default)
 2. ➕ Prepends the version's `bin/` directory to `PATH`
 3. 📂 Sets `GOROOT` to the version's root directory
+
+**2. Login profile / registry** - a static PATH entry so GUI apps find Go:
+
+| Platform | Where | What |
+| -------- | ----- | ---- |
+| 🐧 Linux (bash) | `~/.profile` | `export PATH="$HOME/.gvm/current/bin:$PATH"` |
+| 🐚 Linux (zsh) | `~/.zprofile` | `export PATH="$HOME/.gvm/current/bin:$PATH"` |
+| 🪟 Windows | `HKCU\Environment` | gvm dir + `~\.gvm\current\bin` added to user PATH |
+
+This login profile entry is what makes `go` visible to VSCode, GoLand, and other GUI editors that launch outside of an interactive shell session.
 
 > 🔇 No daemons, no background processes, no side effects.
 
@@ -394,15 +422,18 @@ On every new shell session the hook:
 
 ```
 ~/.gvm/
-├── version          # 🌍 active global version (plain text)
+├── version          # active global version (plain text)
+├── current -> versions/go1.23.0/   # symlink/junction updated by gvm use
 ├── versions/
-│   ├── go1.22.4/    # 📦 extracted Go toolchain
+│   ├── go1.22.4/    # extracted Go toolchain
 │   │   ├── bin/
 │   │   ├── src/
-│   │   └── …
+│   │   └── ...
 │   └── go1.23.0/
-└── tmp/             # ⏳ download staging area (cleaned after install)
+└── tmp/             # download staging area (cleaned after install)
 ```
+
+The `current` symlink (junction on Windows) always points to the active version. The login profile PATH entry points to `~/.gvm/current/bin`, which means GUI applications always see whichever version was last activated with `gvm use` - no shell restart required.
 
 ---
 
@@ -437,13 +468,9 @@ Releases are automated via GitHub Actions. Pushing a version tag triggers cross-
 | `gvm-darwin-x86_64`      | `x86_64-apple-darwin`        |                  |
 | `gvm-darwin-aarch64`     | `aarch64-apple-darwin`       | 🍎 Apple Silicon |
 
-Each release also includes `checksums.txt` with SHA-256 hashes for all artifacts.
+Each release also includes `checksums.txt` with SHA-256 hashes for all artifacts, plus SBOM files in CycloneDX and SPDX formats.
 
-```sh
-# 🏷️ Publish a new release
-git tag v1.0.0
-git push origin v1.0.0
-```
+Releases are created automatically: every merge to `main` that passes CI triggers the auto-tag-and-release job, which bumps the version based on conventional commit prefixes (`feat` -> minor, `fix` -> patch) and dispatches the release build.
 
 ---
 
