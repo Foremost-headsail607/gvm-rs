@@ -228,17 +228,23 @@ jobs:
 
       # ── SBOM ──────────────────────────────────────────────────────────────────
 
-      - name: Install syft
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | \
-            sh -s -- -b /usr/local/bin
-          syft --version
-
       - name: Generate SBOM - CycloneDX JSON
-        run: syft scan dir:. -o cyclonedx-json --file dist/sbom.cyclonedx.json
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: .
+          format: cyclonedx-json
+          output-file: dist/sbom.cyclonedx.json
+          upload-artifact: false
+          upload-release-assets: false
 
       - name: Generate SBOM - SPDX JSON
-        run: syft scan dir:. -o spdx-json --file dist/sbom.spdx.json
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          path: .
+          format: spdx-json
+          output-file: dist/sbom.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
 
       # ── Generate release notes from conventional commits ──────────────────────
 
