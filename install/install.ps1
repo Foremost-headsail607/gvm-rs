@@ -120,6 +120,24 @@ if ($env:PATH -notlike "*$InstallDir*") {
     $env:PATH = "$InstallDir;$env:PATH"
 }
 
+# ── 5b. Add ~/.gvm\current\bin to User PATH (universal shell support) ────────
+#
+# ~/.gvm\current is a junction that gvm use updates on every version switch.
+# Putting its bin\ subdirectory in the registry PATH makes `go` available in
+# CMD, Git Bash, VSCode, GoLand and any other tool that reads the Windows user
+# environment - without needing a shell hook in each one.
+$GvmCurrentBin = "$env:USERPROFILE\.gvm\current\bin"
+$UserPath2 = [Environment]::GetEnvironmentVariable("PATH", [EnvironmentVariableTarget]::User)
+if ($null -eq $UserPath2) { $UserPath2 = "" }
+
+if ($UserPath2 -notlike "*$GvmCurrentBin*") {
+    $NewPath2 = "$GvmCurrentBin;$UserPath2".TrimEnd(";")
+    [Environment]::SetEnvironmentVariable("PATH", $NewPath2, [EnvironmentVariableTarget]::User)
+    Write-Ok "Added $GvmCurrentBin to your user PATH"
+} else {
+    Write-Ok "$GvmCurrentBin is already in your user PATH"
+}
+
 # ── 6. Configure shell profile ────────────────────────────────────────────────
 Write-Step "Configuring PowerShell profile..."
 
