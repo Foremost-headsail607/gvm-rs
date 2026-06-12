@@ -103,15 +103,27 @@ pub enum Command {
         shell: Option<String>,
     },
 
-    /// Inject the `gvm env` hook into the current shell's profile automatically.
+    /// Configure the shell environment for gvm.
     ///
-    /// Uses the `# gvm init` marker to avoid duplicate entries; re-running is
-    /// safe. The install scripts call this automatically after placing the binary.
+    /// Injects the `gvm env` hook into the shell profile, adds a static PATH
+    /// entry to the login profile (Linux/macOS) or the Windows registry so that
+    /// `go` is visible to all applications including GUI editors like VSCode.
+    ///
+    /// Re-running is safe: existing up-to-date blocks are left unchanged and
+    /// stale ones are updated automatically.
+    ///
+    /// Pass `--reset` to strip all previous gvm configuration and re-apply it
+    /// cleanly. This is safe: only gvm-managed blocks (marked with `# gvm ...`)
+    /// are touched; all other content in profile files is preserved.
     Setup {
         /// Target shell. Auto-detected when omitted.
         /// Accepted values: `powershell`, `bash`, `zsh`, `fish`.
         #[arg(long)]
         shell: Option<String>,
+
+        /// Remove all previous gvm configuration and re-apply it cleanly.
+        #[arg(long)]
+        reset: bool,
     },
 
     /// Run a command using a specific Go version without changing the global default.

@@ -19,7 +19,7 @@ GVM_VERSION="${GVM_VERSION:-latest}"
 API_BASE="${GVM_TEST_API_BASE:-https://api.github.com}"
 DL_BASE="${GVM_TEST_DL_BASE:-https://github.com}"
 
-# ── Terminal helpers ──────────────────────────────────────────────────────────
+# -- Terminal helpers ----------------------------------------------------------
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
     C_CYAN='\033[0;36m'
     C_GREEN='\033[0;32m'
@@ -33,18 +33,17 @@ fi
 
 step() { printf "  ${C_CYAN}->${C_RESET} %s\n" "$1"; }
 ok()   { printf "  ${C_GREEN}v ${C_RESET} %s\n" "$1"; }
-warn() { printf "  ${C_YELLOW}! ${C_RESET} %s\n" "$1"; }
 die()  { printf "  ${C_RED}x ${C_RESET} %s\n" "$1" >&2; exit 1; }
 
 printf "\n  ${C_BOLD}${C_CYAN}gvm${C_RESET}${C_BOLD} -- Go Version Manager${C_RESET} installer\n\n"
 
-# ── 1. Check required tools ───────────────────────────────────────────────────
+# -- 1. Check required tools ---------------------------------------------------
 need() {
     command -v "$1" > /dev/null 2>&1 || die "'$1' is required but not installed."
 }
 need curl
 
-# ── 2. Detect OS and architecture ─────────────────────────────────────────────
+# -- 2. Detect OS and architecture ---------------------------------------------
 OS="$(uname -s 2>/dev/null || echo unknown)"
 case "$OS" in
     Linux)  PLATFORM="linux"  ;;
@@ -61,7 +60,7 @@ esac
 
 step "Detected platform: $PLATFORM-$ARCH"
 
-# ── 3. Resolve version ────────────────────────────────────────────────────────
+# -- 3. Resolve version --------------------------------------------------------
 if [ "$GVM_VERSION" = "latest" ]; then
     step "Fetching latest release from $API_BASE..."
     GVM_VERSION="$(
@@ -74,12 +73,11 @@ fi
 
 step "Installing gvm $GVM_VERSION"
 
-# ── 4. Download binary ────────────────────────────────────────────────────────
+# -- 4. Download binary --------------------------------------------------------
 BINARY="gvm-$PLATFORM-$ARCH"
 URL="$DL_BASE/$REPO/releases/download/$GVM_VERSION/$BINARY"
 TMP_FILE="$(mktemp /tmp/gvm-install.XXXXXX)"
 
-# Cleanup on exit
 trap 'rm -f "$TMP_FILE"' EXIT INT TERM
 
 step "Downloading $BINARY..."
@@ -88,74 +86,20 @@ if ! curl -fSL --progress-bar "$URL" -o "$TMP_FILE"; then
 fi
 chmod +x "$TMP_FILE"
 
-# ── 5. Install binary ─────────────────────────────────────────────────────────
+# -- 5. Install binary ---------------------------------------------------------
 mkdir -p "$INSTALL_DIR"
 mv -f "$TMP_FILE" "$INSTALL_DIR/gvm"
 ok "Installed to $INSTALL_DIR/gvm"
 
-# ── 6. Ensure install dir is in PATH (persistent) ────────────────────────────
-add_to_profile() {
-    local profile="$1"
-    local line="export PATH=\"$INSTALL_DIR:\$PATH\""
+# -- 6. Run gvm setup ----------------------------------------------------------
+# Run setup via full path so it works even before INSTALL_DIR is on PATH.
+printf "\n  ${C_BOLD}Configuring shell environment...${C_RESET}\n\n"
+"$INSTALL_DIR/gvm" setup
 
-    if [ ! -f "$profile" ]; then
-        return
-    fi
-
-    if grep -qF "$INSTALL_DIR" "$profile" 2>/dev/null; then
-        ok "$INSTALL_DIR already in PATH ($profile)"
-        return
-    fi
-
-    printf '\n# gvm: binary location\n%s\n' "$line" >> "$profile"
-    ok "Added $INSTALL_DIR to PATH in $profile"
-}
-
-add_fish_path() {
-    local profile="$HOME/.config/fish/config.fish"
-    if [ ! -f "$profile" ]; then
-        return
-    fi
-    if grep -qF "$INSTALL_DIR" "$profile" 2>/dev/null; then
-        ok "$INSTALL_DIR already in PATH ($profile)"
-        return
-    fi
-    printf '\n# gvm: binary location\nfish_add_path -p "%s"\n' "$INSTALL_DIR" >> "$profile"
-    ok "Added $INSTALL_DIR to PATH in $profile"
-}
-
-CURRENT_SHELL="$(basename "${SHELL:-sh}")"
-case "$CURRENT_SHELL" in
-    zsh)  add_to_profile "$HOME/.zshrc"  ;;
-    fish) add_fish_path                  ;;
-    *)    add_to_profile "$HOME/.bashrc" ;;
-esac
-
-# Make gvm available in this process too
-export PATH="$INSTALL_DIR:$PATH"
-
-# ── 7. Configure shell integration (eval hook) ────────────────────────────────
-step "Configuring shell profile..."
-
-if "$INSTALL_DIR/gvm" setup 2>/dev/null; then
-    :
-else
-    warn "Could not configure profile automatically."
-    warn "Run 'gvm setup' manually after restarting your terminal."
-fi
-
-# ── 8. Summary ────────────────────────────────────────────────────────────────
-printf "\n  ${C_GREEN}${C_BOLD}gvm $GVM_VERSION installed successfully!${C_RESET}\n\n"
-
-case "$CURRENT_SHELL" in
-    zsh)  RELOAD_CMD="source \$HOME/.zshrc"         ;;
-    fish) RELOAD_CMD="source \$HOME/.config/fish/config.fish" ;;
-    *)    RELOAD_CMD="source \$HOME/.bashrc"         ;;
-esac
-
-printf "  Restart your terminal or reload your profile:\n"
-printf "    ${C_CYAN}%s${C_RESET}\n\n" "$RELOAD_CMD"
-printf "  Then install and activate a Go version:\n"
-printf "    ${C_CYAN}gvm install latest${C_RESET}\n"
-printf "    ${C_CYAN}gvm use latest${C_RESET}\n\n"
+# -- 7. Summary ----------------------------------------------------------------
+printf "\n  ${C_GREEN}${C_BOLD}gvm $GVM_VERSION installed and configured!${C_RESET}\n\n"
+printf "  Next steps:\n\n"
+printf "  1. Restart your shell (or source your profile), then install Go:\n"
+printf "       ${C_CYAN}gvm install latest${C_RESET}\n"
+printf "       ${C_CYAN}gvm use latest${C_RESET}\n\n"
 printf "  Run ${C_CYAN}gvm doctor${C_RESET} to verify the setup.\n\n"

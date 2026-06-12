@@ -10,17 +10,13 @@
 //! that implements [`ShellConfig`]. Adding support for a new shell requires
 //! only a new file and a new variant - no existing code needs to change
 //! (Open/Closed principle).
-//!
-//! Shell detection is done at runtime from environment variables rather than
-//! compile-time `cfg!` flags, so a single `gvm` binary works correctly inside
-//! Git Bash, WSL, or any other non-native shell on Windows.
 
 mod bash;
 mod fish;
 mod powershell;
 mod zsh;
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use std::path::{Path, PathBuf};
 
 /// Context passed to [`ShellConfig::env_script`] when generating the shell
@@ -56,6 +52,16 @@ pub trait ShellConfig: std::fmt::Debug {
     /// be determined.
     fn profile_path(&self) -> Option<PathBuf>;
 
+    /// Returns the path to the shell's login startup file where static PATH
+    /// entries should be injected so they are visible to GUI applications and
+    /// non-interactive login shells (e.g. VSCode, display managers).
+    ///
+    /// Returns `None` for shells that have no separate login profile (Fish,
+    /// PowerShell) or on Windows where the registry PATH is used instead.
+    fn login_profile_path(&self) -> Option<PathBuf> {
+        None
+    }
+
     /// Returns the one-liner that should be added to the shell profile so
     /// `gvm env` is evaluated on every new session.
     fn init_line(&self) -> &'static str;
@@ -83,6 +89,15 @@ pub trait ShellConfig: std::fmt::Debug {
     /// `PATH` and `GOROOT` are immediately restored to whatever `.go-version`
     /// or the global default says.
     fn shell_unset_script(&self) -> &'static str;
+
+    /// Returns the executable name used to check whether this shell is
+    /// installed on the current system (e.g. `"bash"`, `"zsh"`, `"pwsh"`).
+    ///
+    /// The default implementation returns `name()`, which is correct for
+    /// bash, zsh, and fish. PowerShell overrides this to return `"pwsh"`.
+    fn binary_name(&self) -> &'static str {
+        self.name()
+    }
 }
 
 // --- Concrete implementations ------------------------------------------------
@@ -105,6 +120,15 @@ impl ShellConfig for Bash {
     }
     fn profile_path(&self) -> Option<PathBuf> {
         bash::profile_path()
+    }
+    fn login_profile_path(&self) -> Option<PathBuf> {
+        // ~/.profile is sourced by login shells and display managers on Linux.
+        // It is not blocked by the interactive-only guard in ~/.bashrc, so
+        // entries here are visible to VSCode and other GUI applications.
+        #[cfg(not(target_os = "windows"))]
+        return dirs::home_dir().map(|h| h.join(".profile"));
+        #[cfg(target_os = "windows")]
+        return None;
     }
     fn init_line(&self) -> &'static str {
         r#"eval "$(gvm env --shell bash)""#
@@ -129,6 +153,13 @@ impl ShellConfig for Zsh {
     }
     fn profile_path(&self) -> Option<PathBuf> {
         zsh::profile_path()
+    }
+    fn login_profile_path(&self) -> Option<PathBuf> {
+        // ~/.zprofile is sourced for zsh login shells (display managers, ssh).
+        #[cfg(not(target_os = "windows"))]
+        return dirs::home_dir().map(|h| h.join(".zprofile"));
+        #[cfg(target_os = "windows")]
+        return None;
     }
     fn init_line(&self) -> &'static str {
         r#"eval "$(gvm env --shell zsh)""#
@@ -171,6 +202,12 @@ impl ShellConfig for Fish {
 impl ShellConfig for PowerShell {
     fn name(&self) -> &'static str {
         "powershell"
+    }
+    fn binary_name(&self) -> &'static str {
+        // The executable is `pwsh` (PowerShell 7+) on all platforms.
+        // On older Windows installations it may be `powershell.exe`, but
+        // `is_available` checks both when running on Windows.
+        "pwsh"
     }
     fn env_script(&self, ctx: &EnvContext<'_>) -> String {
         powershell::env_script(ctx)
@@ -247,6 +284,62 @@ pub fn from_str(s: &str) -> Result<Box<dyn ShellConfig>> {
     }
 }
 
+// --- Shell availability -------------------------------------------------------
+
+/// Returns `true` if the shell binary is present somewhere in `PATH`.
+///
+/// PowerShell on Windows is always considered available since it is the
+/// host process. On other platforms the `pwsh` binary is searched in PATH.
+/// For bash, zsh, and fish the binary name matches `shell.name()`.
+pub fn is_available(shell: &dyn ShellConfig) -> bool {
+    // On Windows, PowerShell is always the host - no binary search needed.
+    #[cfg(windows)]
+    if shell.name() == "powershell" {
+        return true;
+    }
+    find_binary(shell.binary_name())
+}
+
+/// Returns the names of every supported shell that is currently installed.
+///
+/// The list is ordered: powershell, bash, zsh, fish. Only shells whose
+/// binary is found in PATH (or that are natively available) are included.
+pub fn available_shells() -> Vec<&'static str> {
+    let candidates: &[(&dyn ShellConfig, &'static str)] = &[
+        (&PowerShell, "powershell"),
+        (&Bash, "bash"),
+        (&Zsh, "zsh"),
+        (&Fish, "fish"),
+    ];
+    candidates
+        .iter()
+        .filter(|(sh, _)| is_available(*sh))
+        .map(|(_, name)| *name)
+        .collect()
+}
+
+/// Searches `PATH` for an executable with the given name.
+///
+/// On Windows also checks for `<name>.exe` since many Unix-style tools
+/// are distributed without extension aliases.
+fn find_binary(name: &str) -> bool {
+    let sep = if cfg!(windows) { ';' } else { ':' };
+    let Ok(path_var) = std::env::var("PATH") else {
+        return false;
+    };
+    for dir in path_var.split(sep).filter(|s| !s.is_empty()) {
+        let base = Path::new(dir).join(name);
+        if base.exists() {
+            return true;
+        }
+        #[cfg(windows)]
+        if Path::new(dir).join(format!("{name}.exe")).exists() {
+            return true;
+        }
+    }
+    false
+}
+
 // --- Profile injection -------------------------------------------------------
 
 /// Appends the `gvm env` hook and the shell wrapper function to the shell's
@@ -255,7 +348,7 @@ pub fn from_str(s: &str) -> Result<Box<dyn ShellConfig>> {
 /// Two independent markers are used so that each block can be injected
 /// separately and both can be detected by `gvm implode` for clean removal:
 ///
-/// - `# gvm init` - guards the `eval "$(gvm env …)"` one-liner that sets
+/// - `# gvm init` - guards the `eval "$(gvm env ...)"` one-liner that sets
 ///   `PATH`/`GOROOT` on every new shell session.
 /// - `# gvm wrapper` - guards the `gvm()` / `function gvm` definition that
 ///   immediately refreshes the current session after `gvm use`, `gvm default`,
@@ -301,17 +394,16 @@ pub fn inject_profile(shell: &dyn ShellConfig) -> Result<()> {
         let expected_init = format!("{INIT_MARKER}\n{}\n", shell.init_line());
         let expected_wrapper = format!("{WRAPPER_MARKER}\n{}\n", shell.wrapper_function());
         if existing.contains(&expected_init) && existing.contains(&expected_wrapper) {
-            println!("gvm is already configured in {}", profile.display());
+            println!("  gvm hook already configured in {}", profile.display());
             return Ok(());
         }
 
         let mut content = existing.clone();
         let mut any_updated = false;
 
-        // Replace stale init block (marker → next blank line or next marker).
+        // Replace stale init block (marker to next blank line or next marker).
         if !existing.contains(&expected_init) {
             if let Some(marker_pos) = content.find(INIT_MARKER) {
-                // Find where the init block ends: next occurrence of "# gvm " or EOF.
                 let after_marker = &content[marker_pos + INIT_MARKER.len()..];
                 let block_len = after_marker
                     .find("\n# gvm ")
@@ -377,6 +469,153 @@ pub fn inject_profile(shell: &dyn ShellConfig) -> Result<()> {
     Ok(())
 }
 
+/// Injects a static `~/.gvm/current/bin` PATH entry into the shell's login
+/// profile (e.g. `~/.profile` for bash, `~/.zprofile` for zsh).
+///
+/// This entry uses the `# gvm path` marker and is evaluated even in
+/// non-interactive shells, making `go` visible to GUI applications such as
+/// VSCode and GoLand that do not source `~/.bashrc`.
+///
+/// Does nothing for shells that have no login profile. Not compiled on Windows
+/// where the registry PATH is used instead.
+///
+/// # Errors
+///
+/// Returns an error if the login profile cannot be read or written.
+#[cfg(not(target_os = "windows"))]
+pub fn inject_login_profile(shell: &dyn ShellConfig) -> Result<()> {
+    let Some(profile) = shell.login_profile_path() else {
+        return Ok(());
+    };
+
+    const MARKER: &str = "# gvm path";
+    const EXPORT_LINE: &str = r#"export PATH="$HOME/.gvm/current/bin:$PATH""#;
+
+    if let Some(parent) = profile.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+
+    let existing = if profile.exists() {
+        std::fs::read_to_string(&profile)
+            .with_context(|| format!("Cannot read {}", profile.display()))?
+    } else {
+        String::new()
+    };
+
+    let expected_block = format!("{MARKER}\n{EXPORT_LINE}\n");
+
+    if existing.contains(&expected_block) {
+        println!(
+            "  gvm PATH entry already configured in {}",
+            profile.display()
+        );
+        return Ok(());
+    }
+
+    if existing.contains(MARKER) {
+        // Stale block - remove and re-add with updated content.
+        let cleaned = remove_gvm_lines(&existing);
+        let new_content = format!("{}\n\n{expected_block}", cleaned.trim_end());
+        std::fs::write(&profile, &new_content)
+            .with_context(|| format!("Failed to write to {}", profile.display()))?;
+        println!("  Updated gvm PATH entry in {}", profile.display());
+        return Ok(());
+    }
+
+    // No marker yet - append.
+    let mut content = existing.trim_end().to_string();
+    if !content.is_empty() {
+        content.push_str("\n\n");
+    }
+    content.push_str(&expected_block);
+    std::fs::write(&profile, content)
+        .with_context(|| format!("Failed to write to {}", profile.display()))?;
+    println!("  Added gvm PATH entry to {}", profile.display());
+    Ok(())
+}
+
+/// Strips all gvm-managed blocks from `profile`.
+///
+/// Returns `Ok(true)` when the file was modified, `Ok(false)` when it
+/// contained no gvm entries or did not exist.
+///
+/// Used by `gvm implode` and `gvm setup --reset`.
+///
+/// # Errors
+///
+/// Returns an error if the file cannot be read or written.
+pub fn strip_profile(path: &Path) -> Result<bool> {
+    if !path.exists() {
+        return Ok(false);
+    }
+    let content =
+        std::fs::read_to_string(path).with_context(|| format!("Cannot read {}", path.display()))?;
+    let cleaned = remove_gvm_lines(&content);
+    if cleaned == content {
+        return Ok(false);
+    }
+    std::fs::write(path, &cleaned).with_context(|| format!("Cannot write {}", path.display()))?;
+    Ok(true)
+}
+
+/// Strips all gvm-managed lines from a profile file's content string.
+///
+/// Recognised block markers (each starts a block terminated by the next
+/// blank line):
+///
+/// - `# gvm init`             - eval hook added by `gvm setup`
+/// - `# gvm wrapper`          - shell wrapper function added by `gvm setup`
+/// - `# gvm path`             - static PATH entry added by `gvm setup` to the login profile
+/// - `# gvm: binary location` - legacy PATH entry written by old install scripts
+///
+/// After removal, runs of more than one consecutive blank line are collapsed
+/// to a single blank line so the file remains tidy.
+pub fn remove_gvm_lines(content: &str) -> String {
+    const MARKERS: &[&str] = &[
+        "# gvm init",
+        "# gvm wrapper",
+        "# gvm path",
+        "# gvm: binary location",
+    ];
+
+    let mut in_block = false;
+    let mut out: Vec<&str> = Vec::new();
+
+    for line in content.lines() {
+        if in_block {
+            if line.trim().is_empty() {
+                in_block = false;
+            }
+            continue;
+        }
+        if MARKERS.iter().any(|m| line.contains(m)) {
+            in_block = true;
+            continue;
+        }
+        out.push(line);
+    }
+
+    // Collapse consecutive blank lines down to one.
+    let mut result = String::with_capacity(content.len());
+    let mut prev_blank = false;
+    for line in &out {
+        let blank = line.trim().is_empty();
+        if blank && prev_blank {
+            continue;
+        }
+        result.push_str(line);
+        result.push('\n');
+        prev_blank = blank;
+    }
+
+    let trimmed = result.trim_end().to_string();
+    if trimmed.is_empty() {
+        trimmed
+    } else {
+        trimmed + "\n"
+    }
+}
+
 // --- Helpers -----------------------------------------------------------------
 
 /// Returns `true` if the directory containing the current `gvm` executable
@@ -406,7 +645,6 @@ mod tests {
     use std::fs;
     use tempfile::tempdir;
 
-    // Write `existing` to a temp file, simulate inject_profile logic, return result.
     fn run_inject(shell: &dyn ShellConfig, existing: &str) -> String {
         const INIT_MARKER: &str = "# gvm init";
         const WRAPPER_MARKER: &str = "# gvm wrapper";
@@ -485,14 +723,11 @@ mod tests {
     fn setup_updates_stale_bash_wrapper() {
         let stale = "# gvm init\neval \"$(gvm env --shell bash)\"\n\n# gvm wrapper\ngvm() { command gvm \"$@\"; }\n";
         let result = run_inject(&Bash, stale);
-        // New wrapper must be present
         assert!(result.contains("shell)"), "shell case must be injected");
-        // Old stub must be gone
         assert!(
             !result.contains("command gvm \"$@\"; }"),
             "old stub must be removed"
         );
-        // Init block must be preserved
         assert!(result.contains("# gvm init"), "init block must survive");
     }
 
@@ -525,7 +760,6 @@ mod tests {
 
     #[test]
     fn setup_updates_stale_fish_init_line() {
-        // Old fish init line (without the command -q guard) should be replaced.
         let stale = format!(
             "# gvm init\ngvm env --shell fish | source\n\n# gvm wrapper\n{}\n",
             Fish.wrapper_function()
@@ -552,5 +786,86 @@ mod tests {
         let first = run_inject(&sh, "");
         let second = run_inject(&sh, &first);
         assert_eq!(first, second, "fish: second run must not change the file");
+    }
+
+    // --- remove_gvm_lines tests -----------------------------------------------
+
+    #[test]
+    fn removes_init_block() {
+        let input = "source ~/.bashrc\n\n# gvm init\neval \"$(gvm env --shell bash)\"\n";
+        let got = remove_gvm_lines(input);
+        assert!(!got.contains("gvm init"));
+        assert!(!got.contains("eval"));
+        assert!(got.contains("source ~/.bashrc"));
+    }
+
+    #[test]
+    fn removes_legacy_binary_location_block() {
+        let input =
+            "# existing line\n\n# gvm: binary location\nexport PATH=\"/home/user/.local/bin:$PATH\"\n";
+        let got = remove_gvm_lines(input);
+        assert!(!got.contains("gvm: binary location"));
+        assert!(!got.contains("export PATH"));
+        assert!(got.contains("# existing line"));
+    }
+
+    #[test]
+    fn removes_path_block() {
+        let input = "# existing line\n\n# gvm path\nexport PATH=\"$HOME/.gvm/current/bin:$PATH\"\n";
+        let got = remove_gvm_lines(input);
+        assert!(!got.contains("gvm path"));
+        assert!(!got.contains(".gvm/current/bin"));
+        assert!(got.contains("# existing line"));
+    }
+
+    #[test]
+    fn removes_wrapper_block() {
+        let input = concat!(
+            "source ~/.bashrc\n\n",
+            "# gvm wrapper\n",
+            "gvm() {\n",
+            "    command gvm \"$@\"\n",
+            "    local _gvm_exit=$?\n",
+            "    return $_gvm_exit\n",
+            "}\n",
+        );
+        let got = remove_gvm_lines(input);
+        assert!(!got.contains("gvm wrapper"));
+        assert!(!got.contains("gvm()"));
+        assert!(got.contains("source ~/.bashrc"));
+    }
+
+    #[test]
+    fn removes_all_blocks() {
+        let input = concat!(
+            "# user config\n\n",
+            "# gvm: binary location\nexport PATH=\"/bin:$PATH\"\n\n",
+            "# gvm init\neval \"$(gvm env --shell bash)\"\n\n",
+            "# gvm wrapper\n",
+            "gvm() {\n",
+            "    command gvm \"$@\"\n",
+            "}\n\n",
+            "# gvm path\nexport PATH=\"$HOME/.gvm/current/bin:$PATH\"\n",
+        );
+        let got = remove_gvm_lines(input);
+        assert!(!got.contains("gvm init"));
+        assert!(!got.contains("gvm: binary location"));
+        assert!(!got.contains("gvm wrapper"));
+        assert!(!got.contains("gvm path"));
+        assert!(!got.contains("gvm()"));
+        assert!(got.contains("# user config"));
+    }
+
+    #[test]
+    fn idempotent_on_clean_file() {
+        let input = "export FOO=bar\nalias ll='ls -la'\n";
+        assert_eq!(remove_gvm_lines(input), input);
+    }
+
+    #[test]
+    fn collapses_extra_blank_lines() {
+        let input = "line1\n\n\n\nline2\n";
+        let got = remove_gvm_lines(input);
+        assert!(!got.contains("\n\n\n"));
     }
 }
