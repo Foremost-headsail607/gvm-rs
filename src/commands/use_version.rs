@@ -24,16 +24,21 @@ pub fn run(config: &Config, spec_str: &str) -> Result<()> {
     let version = toolchain::resolve_installed(config, &spec)?;
 
     toolchain::set_global_version(config, &version)?;
+    toolchain::update_current_link(config, &version)?;
 
     println!(
         "{} Now using Go {} (global).",
         "✓".green(),
         version.tag().bold()
     );
+    println!(
+        "  Active in all shells (CMD, Git Bash, PowerShell) and editors via {}.",
+        "~/.gvm/current".cyan()
+    );
 
     // When the gvm wrapper function is active (injected by `gvm setup`) the
-    // shell refreshes automatically. Print a fallback hint only for sessions
-    // where the wrapper is not loaded (e.g. scripts, CI, or before setup).
+    // current shell session is already updated automatically. Print a fallback
+    // hint for sessions where the wrapper is not loaded (scripts, CI, raw shell).
     let hint = match shell::detect() {
         Some(sh) if sh.name() == "powershell" => {
             format!(
@@ -44,6 +49,6 @@ pub fn run(config: &Config, spec_str: &str) -> Result<()> {
         Some(sh) => format!("eval \"$(gvm env --shell {})\"", sh.name().cyan()),
         None => "eval \"$(gvm env)\"".to_string(),
     };
-    println!("  Active immediately in this session (or run: {hint})");
+    println!("  (current session without wrapper: {hint})");
     Ok(())
 }
