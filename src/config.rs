@@ -75,6 +75,18 @@ impl Config {
         self.version_dir(tag).join("bin")
     }
 
+    /// Returns the path to the `current` junction/symlink that always points to
+    /// the active Go version directory.
+    ///
+    /// Adding `<root>/current/bin` to the OS PATH once (during install) makes
+    /// `go` available in every shell - CMD, Git Bash, editors - without session
+    /// hooks. `gvm use` updates this link; the PATH entry never changes.
+    ///
+    /// Layout: `<root>/current` -> `<root>/versions/<active-tag>/`
+    pub fn current_dir(&self) -> PathBuf {
+        self.root.join("current")
+    }
+
     /// Returns the path to the optional default-packages file.
     ///
     /// When this file exists, `gvm install` reads it after a successful
