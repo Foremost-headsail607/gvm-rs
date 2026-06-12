@@ -37,9 +37,63 @@ use crate::{shell, shell::ShellConfig};
 /// written, or (on Windows) the registry cannot be accessed.
 pub fn run(shell_str: Option<&str>, reset: bool) -> Result<()> {
     let sh: Box<dyn ShellConfig> = match shell_str {
-        Some(s) => shell::from_str(s)?,
-        None => shell::detect()
-            .ok_or_else(|| anyhow::anyhow!("Could not detect shell. Use --shell <name>."))?,
+        Some(s) => {
+            let sh = shell::from_str(s)?;
+            if !shell::is_available(sh.as_ref()) {
+                let available = shell::available_shells();
+                let hint = if available.is_empty() {
+                    "No supported shells found in PATH.".to_string()
+                } else {
+                    format!(
+                        "Shells available on this system: {}",
+                        available.join(", ")
+                    )
+                };
+                anyhow::bail!(
+                    "Shell '{}' is not installed or not found in PATH.\n  {}",
+                    s,
+                    hint
+                );
+            }
+            sh
+        }
+        None => match shell::detect() {
+            Some(sh) => {
+                // Sanity-check: the detected shell should always be available,
+                // but guard against a stale $SHELL pointing to a removed binary.
+                if !shell::is_available(sh.as_ref()) {
+                    let available = shell::available_shells();
+                    let hint = if available.is_empty() {
+                        "No supported shells found in PATH. Install bash, zsh, or fish first."
+                            .to_string()
+                    } else {
+                        format!(
+                            "Try: gvm setup --shell {}",
+                            available.first().copied().unwrap_or("bash")
+                        )
+                    };
+                    anyhow::bail!(
+                        "Detected shell '{}' but its binary was not found in PATH.\n  {}",
+                        sh.name(),
+                        hint
+                    );
+                }
+                sh
+            }
+            None => {
+                let available = shell::available_shells();
+                let hint = if available.is_empty() {
+                    "No supported shells found. Install bash, zsh, fish, or PowerShell first."
+                        .to_string()
+                } else {
+                    format!(
+                        "Detected shells: {}. Use --shell <name> to select one.",
+                        available.join(", ")
+                    )
+                };
+                anyhow::bail!("Could not detect current shell.\n  {}", hint);
+            }
+        },
     };
 
     println!("Setting up gvm for {}...", sh.name().bold());
