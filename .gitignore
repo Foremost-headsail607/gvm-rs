@@ -1,1 +1,25 @@
-/target
+# Rust build output
+/target/
+
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Editor and IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Test artifacts
+/tmp/
+*.log
+
+# OS
+Desktop.ini
