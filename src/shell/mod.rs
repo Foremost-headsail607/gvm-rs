@@ -548,14 +548,13 @@ pub fn strip_profile(path: &Path) -> Result<bool> {
     if !path.exists() {
         return Ok(false);
     }
-    let content = std::fs::read_to_string(path)
-        .with_context(|| format!("Cannot read {}", path.display()))?;
+    let content =
+        std::fs::read_to_string(path).with_context(|| format!("Cannot read {}", path.display()))?;
     let cleaned = remove_gvm_lines(&content);
     if cleaned == content {
         return Ok(false);
     }
-    std::fs::write(path, &cleaned)
-        .with_context(|| format!("Cannot write {}", path.display()))?;
+    std::fs::write(path, &cleaned).with_context(|| format!("Cannot write {}", path.display()))?;
     Ok(true)
 }
 
@@ -812,8 +811,7 @@ mod tests {
 
     #[test]
     fn removes_path_block() {
-        let input =
-            "# existing line\n\n# gvm path\nexport PATH=\"$HOME/.gvm/current/bin:$PATH\"\n";
+        let input = "# existing line\n\n# gvm path\nexport PATH=\"$HOME/.gvm/current/bin:$PATH\"\n";
         let got = remove_gvm_lines(input);
         assert!(!got.contains("gvm path"));
         assert!(!got.contains(".gvm/current/bin"));

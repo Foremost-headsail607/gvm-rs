@@ -44,10 +44,7 @@ pub fn run(shell_str: Option<&str>, reset: bool) -> Result<()> {
                 let hint = if available.is_empty() {
                     "No supported shells found in PATH.".to_string()
                 } else {
-                    format!(
-                        "Shells available on this system: {}",
-                        available.join(", ")
-                    )
+                    format!("Shells available on this system: {}", available.join(", "))
                 };
                 anyhow::bail!(
                     "Shell '{}' is not installed or not found in PATH.\n  {}",
@@ -216,12 +213,12 @@ fn inject_windows_registry() -> Result<()> {
     if let Some(home) = dirs::home_dir() {
         let current_bin = home.join(".gvm").join("current").join("bin");
         let current_bin_str = current_bin.to_string_lossy().to_string();
-        if !entries.iter().any(|e| std::path::Path::new(e) == current_bin) {
+        if !entries
+            .iter()
+            .any(|e| std::path::Path::new(e) == current_bin)
+        {
             entries.insert(0, current_bin_str);
-            println!(
-                "  Added {} to user PATH (registry)",
-                current_bin.display()
-            );
+            println!("  Added {} to user PATH (registry)", current_bin.display());
             changed = true;
         } else {
             println!("  {} already in user PATH", current_bin.display());
@@ -268,7 +265,10 @@ fn strip_windows_registry() -> Result<()> {
     if new_path != current_path {
         env.set_value("PATH", &new_path)
             .context("Cannot write PATH to HKCU\\Environment")?;
-        println!("  {} Removed gvm entries from user PATH (registry)", "✓".green());
+        println!(
+            "  {} Removed gvm entries from user PATH (registry)",
+            "✓".green()
+        );
     }
 
     Ok(())

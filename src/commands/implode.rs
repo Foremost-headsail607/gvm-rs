@@ -153,7 +153,6 @@ fn dir_size_mb(root: &Path) -> f64 {
     walk(root) as f64 / (1024.0 * 1024.0)
 }
 
-
 // ── Binary removal ────────────────────────────────────────────────────────────
 
 /// Removes the gvm executable.
@@ -180,4 +179,3 @@ fn remove_binary(exe: &Path) -> Result<()> {
     }
     Ok(())
 }
-
