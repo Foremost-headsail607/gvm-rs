@@ -1,0 +1,50 @@
+//! `gvm completions` - generate shell completion scripts.
+//!
+//! Uses [`clap_complete`] to generate completion scripts for all supported
+//! shells. The output is written to stdout so the caller can redirect it to
+//! the appropriate location.
+//!
+//! # Examples
+//!
+//! ```text
+//! # Bash
+//! gvm completions bash > ~/.local/share/bash-completion/completions/gvm
+//!
+//! # Zsh  (fpath must be configured)
+//! gvm completions zsh > "${fpath[1]}/_gvm"
+//!
+//! # Fish
+//! gvm completions fish > ~/.config/fish/completions/gvm.fish
+//!
+//! # PowerShell
+//! gvm completions powershell >> $PROFILE
+//! ```
+
+use anyhow::{bail, Result};
+use clap::CommandFactory;
+use clap_complete::{generate, Shell as CompShell};
+
+use crate::cli::Cli;
+
+/// Writes the completion script for `shell_str` to stdout.
+///
+/// # Errors
+///
+/// Returns an error if `shell_str` does not name a supported shell.
+/// Supported values: `bash`, `zsh`, `fish`, `powershell` (or `pwsh`).
+pub fn run(shell_str: &str) -> Result<()> {
+    let shell = match shell_str.to_lowercase().replace('-', "").as_str() {
+        "bash" => CompShell::Bash,
+        "zsh" => CompShell::Zsh,
+        "fish" => CompShell::Fish,
+        "powershell" | "pwsh" => CompShell::PowerShell,
+        _ => bail!(
+            "Unknown shell '{}'. Supported: bash, zsh, fish, powershell",
+            shell_str
+        ),
+    };
+
+    let mut cmd = Cli::command();
+    generate(shell, &mut cmd, "gvm", &mut std::io::stdout());
+    Ok(())
+}
