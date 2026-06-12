@@ -1,0 +1,69 @@
+//! Data structures for the go.dev release JSON API.
+//!
+//! The structs in this module are deserialised directly from the JSON response
+//! of `https://go.dev/dl/?mode=json&include=all`. Only the fields required by
+//! `gvm` are used; the rest are retained to avoid deserialisation errors if
+//! the API adds new fields.
+
+use crate::version::GoVersion;
+use serde::Deserialize;
+
+/// A single Go release as returned by the go.dev download API.
+#[derive(Deserialize, Debug, Clone)]
+pub struct Release {
+    /// Canonical release tag, e.g. `"go1.22.4"`.
+    pub version: String,
+
+    /// `true` for stable releases; `false` for release candidates and betas.
+    pub stable: bool,
+
+    /// All downloadable files associated with this release.
+    pub files: Vec<ReleaseFile>,
+}
+
+/// A single downloadable file within a [`Release`].
+#[derive(Deserialize, Debug, Clone)]
+#[allow(dead_code)]
+pub struct ReleaseFile {
+    /// Archive filename, e.g. `"go1.22.4.linux-amd64.tar.gz"`.
+    pub filename: String,
+
+    /// Target operating system reported by go.dev (`"linux"`, `"darwin"`,
+    /// `"windows"`).
+    pub os: String,
+
+    /// Target architecture reported by go.dev (`"amd64"`, `"arm64"`, `"386"`).
+    pub arch: String,
+
+    /// Expected SHA-256 checksum of the file as a lowercase hex string.
+    pub sha256: String,
+
+    /// File size in bytes.
+    pub size: u64,
+
+    /// File kind. Only `"archive"` files are used by `gvm`; others
+    /// (`"source"`, `"installer"`) are ignored.
+    pub kind: String,
+}
+
+impl Release {
+    /// Parses [`Release::version`] into a [`GoVersion`].
+    ///
+    /// Returns `None` if the version string cannot be parsed (e.g. for
+    /// pre-release tags with non-standard suffixes).
+    pub fn go_version(&self) -> Option<GoVersion> {
+        GoVersion::parse(&self.version).ok()
+    }
+
+    /// Finds the archive file for the given operating system and architecture.
+    ///
+    /// Returns the first [`ReleaseFile`] whose `os` and `arch` fields match
+    /// the supplied values and whose `kind` is `"archive"`.
+    ///
+    /// Returns `None` if no matching file exists in this release.
+    pub fn archive_for(&self, os: &str, arch: &str) -> Option<&ReleaseFile> {
+        self.files
+            .iter()
+            .find(|f| f.os == os && f.arch == arch && f.kind == "archive")
+    }
+}
