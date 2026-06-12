@@ -34,6 +34,7 @@ use crate::{config::Config, shell, toolchain};
 pub fn run(config: &Config, shell_str: Option<&str>) -> Result<()> {
     println!("Checking gvm environment...\n");
     let mut issues = 0u32;
+    let go_name = if cfg!(windows) { "go.exe" } else { "go" };
 
     // ---- Check 1: gvm binary on PATH ----------------------------------------
     if shell::gvm_in_path() {
@@ -73,7 +74,24 @@ pub fn run(config: &Config, shell_str: Option<&str>) -> Result<()> {
         }
     }
 
-    // ---- Check 5: local .go-version consistency -----------------------------
+    // ---- Check 5: ~/.gvm/current junction is set up -------------------------
+    //
+    // Users who installed gvm before v1.1.0 (which introduced the junction)
+    // will not have ~/.gvm/current until they run `gvm use` with the new
+    // binary. Warn them so `go` works in CMD, Git Bash and editors.
+    let current_dir = config.current_dir();
+    let current_go = current_dir.join("bin").join(go_name);
+    if current_go.exists() {
+        ok(&format!(
+            "~/.gvm/current junction is configured ({})",
+            current_dir.display()
+        ));
+    } else {
+        fail("~/.gvm/current not set up  (run 'gvm use <version>' to enable universal shell support)");
+        issues += 1;
+    }
+
+    // ---- Check 6: local .go-version consistency -----------------------------
     if let Ok(cwd) = std::env::current_dir() {
         let vf = cwd.join(".go-version");
         if vf.exists() {
@@ -102,7 +120,7 @@ pub fn run(config: &Config, shell_str: Option<&str>) -> Result<()> {
         }
     }
 
-    // ---- Check 6: shell profile contains the gvm init hook ------------------
+    // ---- Check 7: shell profile contains the gvm init hook ------------------
     let sh = match shell_str {
         Some(s) => shell::from_str(s).ok(),
         None => shell::detect(),
@@ -134,14 +152,13 @@ pub fn run(config: &Config, shell_str: Option<&str>) -> Result<()> {
         }
     }
 
-    // ---- Check 7: single, gvm-managed `go` binary in PATH ------------------
+    // ---- Check 8: single, gvm-managed `go` binary in PATH ------------------
     //
     // Scans every directory in PATH for a `go` (or `go.exe`) executable.
     // Reports a warning when multiple are found (shadowing is confusing) and
     // an error when the first - i.e. the active - one is not managed by gvm.
     // This is what `whereis go` surfaces on Linux: system-installed Go
     // alongside the gvm-managed one.
-    let go_name = if cfg!(windows) { "go.exe" } else { "go" };
     let path_sep = if cfg!(windows) { ';' } else { ':' };
     let path_var = std::env::var("PATH").unwrap_or_default();
     let versions_dir = config.versions_dir();
@@ -165,7 +182,9 @@ pub fn run(config: &Config, shell_str: Option<&str>) -> Result<()> {
         }
         1 => {
             let go = &go_paths[0];
-            if go.starts_with(&versions_dir) {
+            // Accept both ~/.gvm/versions/<tag>/bin/go and ~/.gvm/current/bin/go
+            // (the junction path introduced in v1.1.0 for universal shell support).
+            if go.starts_with(&versions_dir) || go.starts_with(&current_dir) {
                 ok(&format!("Active Go is gvm-managed ({})", go.display()));
             } else {
                 fail(&format!(
@@ -180,7 +199,8 @@ pub fn run(config: &Config, shell_str: Option<&str>) -> Result<()> {
             }
         }
         n => {
-            let first_is_gvm = go_paths[0].starts_with(&versions_dir);
+            let first_is_gvm =
+                go_paths[0].starts_with(&versions_dir) || go_paths[0].starts_with(&current_dir);
             if first_is_gvm {
                 warn(&format!(
                     "{n} Go binaries found in PATH - {} non-gvm installation(s) are shadowed \
@@ -197,7 +217,7 @@ pub fn run(config: &Config, shell_str: Option<&str>) -> Result<()> {
                 for (i, path) in go_paths.iter().enumerate() {
                     let label = if i == 0 {
                         " (active - NOT gvm-managed)"
-                    } else if path.starts_with(&versions_dir) {
+                    } else if path.starts_with(&versions_dir) || path.starts_with(&current_dir) {
                         " (gvm-managed - shadowed)"
                     } else {
                         " (shadowed)"
