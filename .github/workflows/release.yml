@@ -1,7 +1,8 @@
 name: Release
 
-# Triggered by pushing a version tag (e.g. git tag v1.1.0 && git push origin v1.1.0).
-# Builds binaries for all supported platforms, generates checksums + SBOM,
+# Triggered by pushing a version tag - either manually or by the auto-release
+# job in ci.yml. Builds binaries for all supported platforms, embeds the tag
+# version into each binary at compile time, generates checksums + SBOM,
 # creates the GitHub Release with structured notes and uploads everything.
 on:
   push:
@@ -88,6 +89,24 @@ jobs:
         uses: Swatinem/rust-cache@82a92a6e8fbeee089604da2575dc567ae9ddeaab # v2
         with:
           key: release-${{ matrix.target }}
+
+      # ── Embed the tag version into Cargo.toml before compiling ───────────────
+      #
+      # The tag (e.g. v1.1.0) is stripped of its leading 'v' and written into
+      # Cargo.toml and Cargo.lock so that `gvm --version` and the upgrade check
+      # report the correct version without committing anything to main.
+      - name: Set version from tag
+        shell: bash
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          # Update Cargo.toml - target only the first version = "..." line (package version)
+          sed -i.bak "0,/^version = \"[^\"]*\"/{s/^version = \"[^\"]*\"/version = \"${VERSION}\"/}" Cargo.toml
+          rm -f Cargo.toml.bak
+          # Sync the gvm entry in Cargo.lock so --locked does not fail
+          sed -i.bak "/^name = \"gvm\"$/{n;s/version = \"[^\"]*\"/version = \"${VERSION}\"/}" Cargo.lock
+          rm -f Cargo.lock.bak
+          echo "Version set to ${VERSION}"
+          grep '^version' Cargo.toml
 
       # ── Linux-only toolchain setup ────────────────────────────────────────────
 
@@ -183,13 +202,10 @@ jobs:
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: dist/
+          merge-multiple: true
 
-      - name: Flatten artifact directories into dist/
-        run: |
-          find dist/ -mindepth 2 -type f -exec mv {} dist/ \;
-          find dist/ -mindepth 1 -type d -empty -delete
-          echo "=== dist/ contents ==="
-          ls -lh dist/
+      - name: List dist/ contents
+        run: ls -lh dist/
 
       # ── checksums.txt ──────────────────────────────────────────────────────────
 
@@ -293,7 +309,6 @@ jobs:
           } > /tmp/release_notes.md
 
           cat /tmp/release_notes.md
-          echo "notes_file=/tmp/release_notes.md" >> "$GITHUB_OUTPUT"
 
       # ── Create GitHub Release and upload all assets ───────────────────────────
 
