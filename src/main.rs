@@ -38,8 +38,6 @@ fn main() {
 fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
     http::set_verbose(cli.verbose);
-    http::set_connections(cli.connections);
-    http::set_retries(cli.retries);
     let config = Config::load()?;
 
     match cli.command {
@@ -49,15 +47,28 @@ fn run() -> anyhow::Result<()> {
             no_cgo,
             bootstrap,
             env_vars,
-        } => commands::build::run(
-            &config,
-            &version,
+            download,
+        } => {
+            http::set_connections(download.connections);
+            http::set_retries(download.retries);
+            commands::build::run(
+                &config,
+                &version,
+                force,
+                no_cgo,
+                bootstrap.as_deref(),
+                &env_vars,
+            )
+        }
+        Command::Install {
+            version,
             force,
-            no_cgo,
-            bootstrap.as_deref(),
-            &env_vars,
-        ),
-        Command::Install { version, force } => commands::install::run(&config, &version, force),
+            download,
+        } => {
+            http::set_connections(download.connections);
+            http::set_retries(download.retries);
+            commands::install::run(&config, &version, force)
+        }
         Command::Use { version } => commands::use_version::run(&config, &version),
         Command::Default { version } => commands::default::run(&config, &version),
         Command::Local { version } => commands::local_version::run(&config, &version),
@@ -71,7 +82,11 @@ fn run() -> anyhow::Result<()> {
         Command::Exec { version, args } => commands::exec::run(&config, &version, &args),
         Command::Doctor { shell } => commands::doctor::run(&config, shell.as_deref()),
         Command::Completions { shell } => commands::completions::run(&shell),
-        Command::Upgrade { force } => commands::upgrade::run(force),
+        Command::Upgrade { force, download } => {
+            http::set_connections(download.connections);
+            http::set_retries(download.retries);
+            commands::upgrade::run(force)
+        }
         Command::Implode { force } => commands::implode::run(&config, force),
         Command::Outdated => commands::outdated::run(&config),
         Command::Prune {
