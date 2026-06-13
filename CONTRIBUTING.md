@@ -20,8 +20,8 @@ it is a typo fix, a new idea, a bug report, or a full feature implementation.
 
 ## Before you start coding
 
-- Check [open issues](https://github.com/jhonsferg/gvm/issues) and
-  [pull requests](https://github.com/jhonsferg/gvm/pulls) to avoid duplicate work.
+- Check [open issues](https://github.com/jhonsferg/gvm-rs/issues) and
+  [pull requests](https://github.com/jhonsferg/gvm-rs/pulls) to avoid duplicate work.
 - For large changes, open an issue first to discuss the approach. This saves everyone
   time and ensures the work aligns with the project direction.
 
@@ -30,7 +30,7 @@ it is a typo fix, a new idea, a bug report, or a full feature implementation.
 ## Development setup
 
 ```sh
-git clone https://github.com/jhonsferg/gvm.git
+git clone https://github.com/jhonsferg/gvm-rs.git
 cd gvm
 cargo build
 cargo test

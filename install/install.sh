@@ -2,14 +2,14 @@
 # gvm (Go Version Manager) -- Linux and macOS installer
 #
 # Usage (one-liner):
-#   curl -fsSL https://raw.githubusercontent.com/jhonsferg/gvm/main/install/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/jhonsferg/gvm-rs/main/install/install.sh | sh
 #
 # Customise with environment variables before piping:
 #   GVM_INSTALL_DIR=$HOME/.local/bin GVM_VERSION=v1.0.0 curl -fsSL ... | sh
 
 set -eu
 
-REPO="${GVM_REPO:-jhonsferg/gvm}"
+REPO="${GVM_REPO:-jhonsferg/gvm-rs}"
 INSTALL_DIR="${GVM_INSTALL_DIR:-$HOME/.local/bin}"
 GVM_VERSION="${GVM_VERSION:-latest}"
 

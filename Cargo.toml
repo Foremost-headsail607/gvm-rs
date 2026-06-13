@@ -1,9 +1,13 @@
 [package]
-name = "gvm"
-version = "1.0.0"
+name = "gvm-rs"
+version = "1.5.1"
 edition = "2021"
 description = "A fast, cross-platform Go version manager written in Rust"
 license = "MIT"
+repository = "https://github.com/jhonsferg/gvm-rs"
+homepage = "https://github.com/jhonsferg/gvm-rs"
+keywords = ["go", "golang", "version-manager", "toolchain", "gvm"]
+categories = ["command-line-utilities", "development-tools"]
 
 [[bin]]
 name = "gvm"

@@ -271,7 +271,7 @@ pub enum Command {
     /// Update gvm itself to the latest release from GitHub.
     ///
     /// Downloads the correct binary for the current platform from
-    /// `github.com/jhonsferg/gvm` and replaces the running executable
+    /// `github.com/jhonsferg/gvm-rs` and replaces the running executable
     /// in-place. The operation is atomic on Unix and best-effort on Windows.
     Upgrade {
         /// Re-install the latest version even if gvm is already up to date.

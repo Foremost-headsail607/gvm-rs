@@ -575,8 +575,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "gvm"
-version = "1.0.0"
+name = "gvm-rs"
+version = "1.5.1"
 dependencies = [
  "anyhow",
  "clap",

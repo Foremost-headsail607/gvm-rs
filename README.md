@@ -2,30 +2,30 @@
 
 <img src="assets/images/ferris-and-gopher.png" alt="Ferris and Gopher" width="180" />
 
-# gvm - Go Version Manager
+# gvm-rs - Go Version Manager
 
 **A fast, cross-platform Go version manager written in Rust.**
 Install, switch, and pin any Go release - no `sudo`, no system dependencies, no fuss.
 
-[![Release](https://img.shields.io/github/v/release/jhonsferg/gvm?style=for-the-badge&logo=github&label=Release&color=blueviolet)](https://github.com/jhonsferg/gvm/releases/latest)
-[![CI](https://img.shields.io/github/actions/workflow/status/jhonsferg/gvm/ci.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI)](https://github.com/jhonsferg/gvm/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/jhonsferg/gvm-rs?style=for-the-badge&logo=github&label=Release&color=blueviolet)](https://github.com/jhonsferg/gvm-rs/releases/latest)
+[![CI](https://img.shields.io/github/actions/workflow/status/jhonsferg/gvm-rs/ci.yml?branch=main&style=for-the-badge&logo=githubactions&logoColor=white&label=CI)](https://github.com/jhonsferg/gvm-rs/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge&logo=opensourceinitiative&logoColor=white)](LICENSE)
 
 [![Rust](https://img.shields.io/badge/Built_with-Rust-orange?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![TLS](https://img.shields.io/badge/TLS-rustls_%28no_OpenSSL%29-lightgrey?style=for-the-badge&logo=letsencrypt&logoColor=white)](https://github.com/rustls/rustls)
 
-[![Windows](https://img.shields.io/badge/Windows-0078D4?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/jhonsferg/gvm/releases/latest)
-[![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/jhonsferg/gvm/releases/latest)
-[![macOS](https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/jhonsferg/gvm/releases/latest)
-[![Android](https://img.shields.io/badge/Android_%28Termux%29-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/jhonsferg/gvm/releases/latest)
+[![Windows](https://img.shields.io/badge/Windows-0078D4?style=for-the-badge&logo=windows11&logoColor=white)](https://github.com/jhonsferg/gvm-rs/releases/latest)
+[![Linux](https://img.shields.io/badge/Linux-FCC624?style=for-the-badge&logo=linux&logoColor=black)](https://github.com/jhonsferg/gvm-rs/releases/latest)
+[![macOS](https://img.shields.io/badge/macOS-000000?style=for-the-badge&logo=apple&logoColor=white)](https://github.com/jhonsferg/gvm-rs/releases/latest)
+[![Android](https://img.shields.io/badge/Android_%28Termux%29-3DDC84?style=for-the-badge&logo=android&logoColor=white)](https://github.com/jhonsferg/gvm-rs/releases/latest)
 
-[![x86_64](https://img.shields.io/badge/x86__64-555555?style=for-the-badge&logoColor=white)](https://github.com/jhonsferg/gvm/releases/latest)
-[![ARM64](https://img.shields.io/badge/ARM64-0091BD?style=for-the-badge&logoColor=white)](https://github.com/jhonsferg/gvm/releases/latest)
-[![ARMv7](https://img.shields.io/badge/ARMv7-0091BD?style=for-the-badge&logoColor=white)](https://github.com/jhonsferg/gvm/releases/latest)
-[![386](https://img.shields.io/badge/386-555555?style=for-the-badge&logoColor=white)](https://github.com/jhonsferg/gvm/releases/latest)
-[![riscv64](https://img.shields.io/badge/RISC--V_64-2C3E50?style=for-the-badge&logoColor=white)](https://github.com/jhonsferg/gvm/releases/latest)
-[![s390x](https://img.shields.io/badge/s390x-1F3A8A?style=for-the-badge&logoColor=white)](https://github.com/jhonsferg/gvm/releases/latest)
-[![ppc64le](https://img.shields.io/badge/ppc64le-1F3A8A?style=for-the-badge&logoColor=white)](https://github.com/jhonsferg/gvm/releases/latest)
+[![x86_64](https://img.shields.io/badge/x86__64-555555?style=for-the-badge&logoColor=white)](https://github.com/jhonsferg/gvm-rs/releases/latest)
+[![ARM64](https://img.shields.io/badge/ARM64-0091BD?style=for-the-badge&logoColor=white)](https://github.com/jhonsferg/gvm-rs/releases/latest)
+[![ARMv7](https://img.shields.io/badge/ARMv7-0091BD?style=for-the-badge&logoColor=white)](https://github.com/jhonsferg/gvm-rs/releases/latest)
+[![386](https://img.shields.io/badge/386-555555?style=for-the-badge&logoColor=white)](https://github.com/jhonsferg/gvm-rs/releases/latest)
+[![riscv64](https://img.shields.io/badge/RISC--V_64-2C3E50?style=for-the-badge&logoColor=white)](https://github.com/jhonsferg/gvm-rs/releases/latest)
+[![s390x](https://img.shields.io/badge/s390x-1F3A8A?style=for-the-badge&logoColor=white)](https://github.com/jhonsferg/gvm-rs/releases/latest)
+[![ppc64le](https://img.shields.io/badge/ppc64le-1F3A8A?style=for-the-badge&logoColor=white)](https://github.com/jhonsferg/gvm-rs/releases/latest)
 
 </div>
 
@@ -69,7 +69,7 @@ gvm is a Go version manager built from scratch in Rust. It was designed with a s
 ### 🪟 Windows (PowerShell)
 
 ```powershell
-irm https://raw.githubusercontent.com/jhonsferg/gvm/main/install/install.ps1 | iex
+irm https://raw.githubusercontent.com/jhonsferg/gvm-rs/main/install/install.ps1 | iex
 ```
 
 > Installs `gvm.exe` to `~\.local\bin`, then automatically runs `gvm setup` which adds the binary directory and `~\.gvm\current\bin` to your user `PATH` via the Windows registry, and injects the shell hook into your PowerShell profile.
@@ -77,7 +77,7 @@ irm https://raw.githubusercontent.com/jhonsferg/gvm/main/install/install.ps1 | i
 ### 🐧 Linux and 🍎 macOS
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/jhonsferg/gvm/main/install/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/jhonsferg/gvm-rs/main/install/install.sh | sh
 ```
 
 > Installs `gvm` to `~/.local/bin`, then automatically runs `gvm setup` which injects the `gvm env` hook into your shell profile (`~/.bashrc`, `~/.zshrc`, etc.) and adds a static `~/.gvm/current/bin` PATH entry to your login profile (`~/.profile` or `~/.zprofile`) so that GUI applications like VSCode and GoLand can find Go without needing an interactive shell.
@@ -503,8 +503,8 @@ The `current` symlink (junction on Windows) always points to the active version.
 Requires [Rust](https://rustup.rs) 1.75 or newer. No system dependencies - TLS is handled by [rustls](https://github.com/rustls/rustls) (pure Rust, no OpenSSL needed).
 
 ```sh
-git clone https://github.com/jhonsferg/gvm.git
-cd gvm
+git clone https://github.com/jhonsferg/gvm-rs.git
+cd gvm-rs
 cargo build --release
 ```
 

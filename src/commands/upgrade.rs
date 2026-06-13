@@ -1,6 +1,6 @@
 //! `gvm upgrade` - self-update the gvm binary.
 //!
-//! Queries the GitHub Releases API for the latest `jhonsferg/gvm` release and
+//! Queries the GitHub Releases API for the latest `jhonsferg/gvm-rs` release and
 //! compares the published tag with the version embedded in this binary at
 //! compile time. When a newer version is available the correct platform archive
 //! is downloaded, the `gvm` binary is extracted from it, and the running
@@ -22,7 +22,7 @@ use std::path::Path;
 use crate::{archive::download, http};
 
 /// GitHub repository slug used to build the Releases API URL.
-const REPO: &str = "jhonsferg/gvm";
+const REPO: &str = "jhonsferg/gvm-rs";
 
 /// Returns the GitHub API base URL, overridable via `GVM_TEST_API_BASE` for
 /// local testing without a real GitHub release.
