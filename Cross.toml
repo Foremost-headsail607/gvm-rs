@@ -1,4 +1,4 @@
 [target.aarch64-linux-android]
 pre-build = [
-  "ar rcs /android-ndk/lib/gcc/aarch64-linux-android/4.9.x/libunwind.a"
+  "find /android-ndk/toolchains/llvm/prebuilt -path '*/linux/aarch64/libunwind.a' -exec cp {} /android-ndk/lib/gcc/aarch64-linux-android/4.9.x/libunwind.a \\;"
 ]
