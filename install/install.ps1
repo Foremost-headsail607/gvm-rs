@@ -2,7 +2,7 @@
 # gvm (Go Version Manager) - Windows installer
 #
 # Usage (one-liner):
-#   irm https://raw.githubusercontent.com/jhonsferg/gvm/main/install/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/jhonsferg/gvm-rs/main/install/install.ps1 | iex
 #
 # Customise with environment variables before piping:
 #   $env:GVM_INSTALL_DIR = "$env:USERPROFILE\.local\bin"
@@ -14,7 +14,7 @@
 
 $ErrorActionPreference = "Stop"
 
-$REPO        = "jhonsferg/gvm"
+$REPO        = "jhonsferg/gvm-rs"
 $InstallDir  = if ($env:GVM_INSTALL_DIR)    { $env:GVM_INSTALL_DIR }    else { "$env:USERPROFILE\.local\bin" }
 $Version     = if ($env:GVM_VERSION)        { $env:GVM_VERSION }        else { "latest" }
 $ApiBase     = if ($env:GVM_TEST_API_BASE)  { $env:GVM_TEST_API_BASE }  else { "https://api.github.com" }
