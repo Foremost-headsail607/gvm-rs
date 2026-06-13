@@ -25,6 +25,30 @@ pub struct Cli {
     /// with commands that emit machine-readable text to stdout.
     #[arg(long, short = 'v', global = true)]
     pub verbose: bool,
+
+    /// Number of parallel connections used to download each file (default: 4).
+    ///
+    /// Each connection fetches a separate byte range simultaneously, giving
+    /// much higher throughput on fast links. The server must advertise
+    /// `Accept-Ranges: bytes`; gvm falls back to a single stream when it does
+    /// not. Use `-j 1` to force single-stream mode.
+    #[arg(
+        long,
+        short = 'j',
+        global = true,
+        default_value = "4",
+        value_name = "N",
+        value_parser = clap::value_parser!(usize).range(1..)
+    )]
+    pub connections: usize,
+
+    /// Maximum retry attempts per connection on network failure (default: 3).
+    ///
+    /// Retries use exponential back-off (1 s, 2 s, 4 s, …). Each parallel
+    /// chunk retries independently, so a transient error in one chunk does
+    /// not abort the others. Set to `0` to fail immediately without retrying.
+    #[arg(long, global = true, default_value = "3", value_name = "N")]
+    pub retries: u8,
 }
 
 /// All subcommands exposed by `gvm`.
