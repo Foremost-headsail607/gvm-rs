@@ -11,8 +11,8 @@
 //! 1. Resolve the requested version against the go.dev release index.
 //! 2. Skip if already installed (unless `--force`).
 //! 3. Find the source tarball (`kind == "source"`) in the release.
-//! 4. Resolve the bootstrap compiler (explicit `--bootstrap`, highest installed,
-//!    or a temporarily downloaded previous-minor release).
+//! 4. Resolve the bootstrap compiler (explicit `--bootstrap`, previous patch if
+//!    installed locally, or a temporarily downloaded previous patch/minor release).
 //! 5. Download and verify the source tarball.
 //! 6. Extract to a unique staging directory.
 //! 7. Run the build script with `GOROOT_BOOTSTRAP` and any user-supplied env vars.
@@ -198,8 +198,8 @@ pub fn run(
 ///
 /// Priority:
 /// 1. `--bootstrap VERSION` - must already be installed via gvm.
-/// 2. Highest locally-installed gvm version (no download needed).
-/// 3. Download the latest patch of the previous minor as a temporary bootstrap.
+/// 2. Previous version (patch-1, or latest of minor-1 when patch==0) if installed locally.
+/// 3. Download that same previous version temporarily; removed after compilation.
 fn resolve_bootstrap(
     config: &Config,
     target: &GoVersion,
@@ -223,9 +223,24 @@ fn resolve_bootstrap(
         });
     }
 
-    // Use the highest already-installed version.
-    let installed = toolchain::list_installed(config)?;
-    if let Some(bv) = installed.into_iter().next() {
+    // Compute the closest older version spec:
+    //   patch > 0 → exact previous patch (e.g. 1.25.10 for target 1.25.11)
+    //   patch == 0 → latest patch of previous minor (e.g. 1.24.x for target 1.25.0)
+    let prev_spec = if target.patch > 0 {
+        VersionSpec::Exact {
+            major: target.major,
+            minor: target.minor,
+            patch: target.patch - 1,
+        }
+    } else {
+        VersionSpec::Partial {
+            major: target.major,
+            minor: target.minor.saturating_sub(1),
+        }
+    };
+
+    // Check if the previous version is already installed - use it without downloading.
+    if let Ok(bv) = toolchain::resolve_installed(config, &prev_spec) {
         return Ok(Bootstrap {
             path: config.version_dir(&bv.tag()),
             cleanup: None,
@@ -233,19 +248,13 @@ fn resolve_bootstrap(
         });
     }
 
-    // No local Go available - download the latest patch of the previous minor.
-    let bootstrap_minor = target.minor.saturating_sub(1);
-    let b_spec = VersionSpec::Partial {
-        major: target.major,
-        minor: bootstrap_minor,
-    };
-
-    let b_release = index::resolve(&b_spec, releases).with_context(|| {
+    // Not installed locally - download that specific version as a temporary bootstrap.
+    let b_release = index::resolve(&prev_spec, releases).with_context(|| {
         format!(
-            "Could not find a bootstrap release for go{}.{}. \
+            "Could not find a bootstrap release for {}. \
              Install a Go version first with 'gvm install latest', \
              or specify one with --bootstrap.",
-            target.major, bootstrap_minor
+            prev_spec
         )
     })?;
 
@@ -268,7 +277,7 @@ fn resolve_bootstrap(
         .join(format!("bootstrap-{}", b_version.tag()));
 
     println!(
-        "{} No local Go found. Downloading bootstrap compiler {}...",
+        "{} Downloading bootstrap {} (temporary, removed after build)...",
         "->".cyan(),
         b_version.tag().bold()
     );
