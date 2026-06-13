@@ -38,6 +38,8 @@ fn main() {
 fn run() -> anyhow::Result<()> {
     let cli = Cli::parse();
     http::set_verbose(cli.verbose);
+    http::set_connections(cli.connections);
+    http::set_retries(cli.retries);
     let config = Config::load()?;
 
     match cli.command {
