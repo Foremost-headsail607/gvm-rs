@@ -14,7 +14,7 @@ Only the latest release receives security fixes.
 
 Report security issues privately via GitHub's built-in mechanism:
 
-1. Go to the [Security tab](https://github.com/jhonsferg/gvm/security/advisories/new) of this repository.
+1. Go to the [Security tab](https://github.com/jhonsferg/gvm-rs/security/advisories/new) of this repository.
 2. Click **"Report a vulnerability"**.
 3. Fill in the details: affected versions, reproduction steps, and potential impact.
 
