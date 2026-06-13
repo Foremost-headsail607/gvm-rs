@@ -38,7 +38,7 @@ pub struct Cli {
         global = true,
         default_value = "4",
         value_name = "N",
-        value_parser = clap::value_parser!(usize).range(1..)
+        value_parser = clap::builder::RangedU64ValueParser::<usize>::new().range(1..)
     )]
     pub connections: usize,
 
