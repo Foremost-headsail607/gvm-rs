@@ -434,14 +434,20 @@ fn compile(
     let tx2 = tx.clone();
 
     let stdout_thread = thread::spawn(move || {
-        BufReader::new(stdout_pipe).lines().flatten().for_each(|l| {
-            tx.send(l).ok();
-        });
+        BufReader::new(stdout_pipe)
+            .lines()
+            .map_while(Result::ok)
+            .for_each(|l| {
+                tx.send(l).ok();
+            });
     });
     let stderr_thread = thread::spawn(move || {
-        BufReader::new(stderr_pipe).lines().flatten().for_each(|l| {
-            tx2.send(l).ok();
-        });
+        BufReader::new(stderr_pipe)
+            .lines()
+            .map_while(Result::ok)
+            .for_each(|l| {
+                tx2.send(l).ok();
+            });
     });
 
     let pb = ProgressBar::new_spinner();
