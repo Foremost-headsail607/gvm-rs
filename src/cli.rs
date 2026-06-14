@@ -5,7 +5,37 @@
 //! flag, and argument is defined here using [`clap`]'s derive macros.
 //! The doc-comment on each variant becomes the help text shown by `gvm --help`.
 
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
+
+/// Download tuning flags shared by commands that fetch files from the network.
+///
+/// Embed with `#[command(flatten)]` on any subcommand that downloads Go
+/// archives, source tarballs, or the gvm binary itself.
+#[derive(Args, Clone, Debug)]
+pub struct DownloadArgs {
+    /// Number of parallel connections used to download each file (default: 4).
+    ///
+    /// Each connection fetches a separate byte range simultaneously, giving
+    /// much higher throughput on fast links. The server must advertise
+    /// `Accept-Ranges: bytes`; gvm falls back to a single stream when it does
+    /// not. Use `-j 1` to force single-stream mode.
+    #[arg(
+        long,
+        short = 'j',
+        default_value = "4",
+        value_name = "N",
+        value_parser = clap::builder::RangedU64ValueParser::<usize>::new().range(1..)
+    )]
+    pub connections: usize,
+
+    /// Maximum retry attempts per connection on network failure (default: 3).
+    ///
+    /// Retries use exponential back-off (1 s, 2 s, 4 s, …). Each parallel
+    /// chunk retries independently, so a transient error in one chunk does
+    /// not abort the others. Set to `0` to fail immediately without retrying.
+    #[arg(long, default_value = "3", value_name = "N")]
+    pub retries: u8,
+}
 
 /// Top-level CLI structure parsed from `argv`.
 #[derive(Parser)]
@@ -74,6 +104,9 @@ pub enum Command {
         /// May be repeated: `--env GOAMD64=v3 --env CC=clang`.
         #[arg(long = "env", value_name = "KEY=VALUE")]
         env_vars: Vec<String>,
+
+        #[command(flatten)]
+        download: DownloadArgs,
     },
 
     /// Install a Go version (e.g. `gvm install 1.22.4` or `gvm install latest`).
@@ -85,6 +118,9 @@ pub enum Command {
         /// Reinstall the version even if it is already present on disk.
         #[arg(long, short = 'f')]
         force: bool,
+
+        #[command(flatten)]
+        download: DownloadArgs,
     },
 
     /// Set the global default Go version.
@@ -285,6 +321,9 @@ pub enum Command {
         /// Re-install the latest version even if gvm is already up to date.
         #[arg(long, short = 'f')]
         force: bool,
+
+        #[command(flatten)]
+        download: DownloadArgs,
     },
 
     /// Completely remove gvm and all installed Go versions from the system.

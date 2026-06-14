@@ -1,4 +1,4 @@
-//! Shared HTTP agent factory and verbose-logging helpers.
+//! Shared HTTP agent factory, verbose-logging helpers, and download options.
 //!
 //! All outbound HTTP requests in `gvm` go through [`agent()`].
 //! Using a single builder ensures consistent timeout and header settings
@@ -7,8 +7,12 @@
 //! When the `--verbose` / `-v` flag is passed, [`log_request`] and
 //! [`log_response`] print HTTP negotiation details to stderr so the user
 //! can diagnose connectivity, redirects, and server behaviour.
+//!
+//! [`set_connections`] and [`set_retries`] configure the parallel download
+//! engine; their values are read from `--connections` / `--retries` CLI flags
+//! and applied globally before any download begins.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::time::Duration;
 
 use anyhow::Result;
@@ -16,6 +20,12 @@ use colored::Colorize;
 
 /// Set to `true` by `main` when the user passes `--verbose` / `-v`.
 static VERBOSE: AtomicBool = AtomicBool::new(false);
+
+/// Number of parallel connections used by the download engine (default: 4).
+static CONNECTIONS: AtomicUsize = AtomicUsize::new(4);
+
+/// Maximum retry attempts per chunk on network failure (default: 3).
+static RETRIES: AtomicU8 = AtomicU8::new(3);
 
 /// Activates (or deactivates) verbose HTTP logging for the process lifetime.
 pub fn set_verbose(v: bool) {
@@ -56,6 +66,26 @@ pub fn log_response(status: u16, reason: &str, headers: &ureq::http::HeaderMap) 
         }
         eprintln!();
     }
+}
+
+/// Sets the number of parallel connections for the download engine.
+pub fn set_connections(n: usize) {
+    CONNECTIONS.store(n, Ordering::Relaxed);
+}
+
+/// Returns the configured number of parallel download connections.
+pub fn connections() -> usize {
+    CONNECTIONS.load(Ordering::Relaxed)
+}
+
+/// Sets the maximum number of retry attempts on network failure.
+pub fn set_retries(n: u8) {
+    RETRIES.store(n, Ordering::Relaxed);
+}
+
+/// Returns the configured retry limit.
+pub fn retries() -> u8 {
+    RETRIES.load(Ordering::Relaxed)
 }
 
 /// Builds and returns a `ureq` agent configured for gvm's needs.
